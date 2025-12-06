@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+const fileUpload = require('express-fileupload');
 const { testConnection } = require('./src/config/database');
 const errorHandler = require('./src/middleware/errorHandler');
 
@@ -27,6 +28,10 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(fileUpload({
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+    abortOnLimit: true
+}));
 
 // Static files for uploads
 app.use('/uploads', express.static('uploads'));
@@ -58,6 +63,8 @@ app.use('/api/employees', require('./src/routes/employeeRoutes'));
 app.use('/api/departments', require('./src/routes/departmentRoutes'));
 app.use('/api/leaves', require('./src/routes/leaveRoutes'));
 app.use('/api/contracts', require('./src/routes/contractRoutes'));
+app.use('/api/email', require('./src/routes/emailRoutes')); // Email endpoint
+app.use('/api/activity-logs', require('./src/routes/activityLogRoutes')); // Activity logs endpoint
 app.use('/api/seed', require('./src/routes/seedRoutes')); // Seed endpoint
 
 // Error handler (must be last)
