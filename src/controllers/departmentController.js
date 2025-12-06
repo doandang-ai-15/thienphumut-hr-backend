@@ -226,3 +226,123 @@ exports.deleteDepartment = asyncHandler(async (req, res) => {
         message: 'Department deleted successfully'
     });
 });
+
+// @desc    Add employee to department
+// @route   POST /api/departments/:id/employees
+// @access  Private (Admin)
+exports.addEmployeeToDepartment = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { employee_id } = req.body;
+
+    // Check if department exists
+    const deptResult = await pool.query(
+        'SELECT name FROM departments WHERE id = $1',
+        [id]
+    );
+
+    if (deptResult.rows.length === 0) {
+        return res.status(404).json({
+            success: false,
+            message: 'Department not found'
+        });
+    }
+
+    // Check if employee exists
+    const empResult = await pool.query(
+        'SELECT id, first_name, last_name, department_id FROM employees WHERE id = $1',
+        [employee_id]
+    );
+
+    if (empResult.rows.length === 0) {
+        return res.status(404).json({
+            success: false,
+            message: 'Employee not found'
+        });
+    }
+
+    const employee = empResult.rows[0];
+
+    // Check if employee is already in this department
+    if (employee.department_id === parseInt(id)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Employee is already in this department'
+        });
+    }
+
+    // Update employee's department
+    await pool.query(
+        'UPDATE employees SET department_id = $1 WHERE id = $2',
+        [id, employee_id]
+    );
+
+    // Log activity
+    await pool.query(
+        'INSERT INTO activity_logs (employee_id, action, description) VALUES ($1, $2, $3)',
+        [req.user.id, 'ADD_EMPLOYEE_TO_DEPARTMENT', `Added ${employee.first_name} ${employee.last_name} to department: ${deptResult.rows[0].name}`]
+    );
+
+    res.status(200).json({
+        success: true,
+        message: 'Employee added to department successfully'
+    });
+});
+
+// @desc    Remove employee from department
+// @route   DELETE /api/departments/:id/employees/:employeeId
+// @access  Private (Admin)
+exports.removeEmployeeFromDepartment = asyncHandler(async (req, res) => {
+    const { id, employeeId } = req.params;
+
+    // Check if department exists
+    const deptResult = await pool.query(
+        'SELECT name FROM departments WHERE id = $1',
+        [id]
+    );
+
+    if (deptResult.rows.length === 0) {
+        return res.status(404).json({
+            success: false,
+            message: 'Department not found'
+        });
+    }
+
+    // Check if employee exists and is in this department
+    const empResult = await pool.query(
+        'SELECT id, first_name, last_name, department_id FROM employees WHERE id = $1',
+        [employeeId]
+    );
+
+    if (empResult.rows.length === 0) {
+        return res.status(404).json({
+            success: false,
+            message: 'Employee not found'
+        });
+    }
+
+    const employee = empResult.rows[0];
+
+    if (employee.department_id !== parseInt(id)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Employee is not in this department'
+        });
+    }
+
+    // Remove employee from department (set department_id to NULL)
+    await pool.query(
+        'UPDATE employees SET department_id = NULL WHERE id = $1',
+        [employeeId]
+    );
+
+    // Log activity
+    await pool.query(
+        'INSERT INTO activity_logs (employee_id, action, description) VALUES ($1, $2, $3)',
+        [req.user.id, 'REMOVE_EMPLOYEE_FROM_DEPARTMENT', `Removed ${employee.first_name} ${employee.last_name} from department: ${deptResult.rows[0].name}`]
+    );
+
+    res.status(200).json({
+        success: true,
+        message: 'Employee removed from department successfully'
+    });
+});

@@ -5,7 +5,9 @@ const {
     getDepartment,
     createDepartment,
     updateDepartment,
-    deleteDepartment
+    deleteDepartment,
+    addEmployeeToDepartment,
+    removeEmployeeFromDepartment
 } = require('../controllers/departmentController');
 const { protect, authorize, logActivity } = require('../middleware/auth');
 
@@ -18,5 +20,9 @@ router.get('/:id', getDepartment);
 router.post('/', authorize('admin'), logActivity, createDepartment);
 router.put('/:id', authorize('admin'), logActivity, updateDepartment);
 router.delete('/:id', authorize('admin'), logActivity, deleteDepartment);
+
+// Employee management in department
+router.post('/:id/employees', authorize('admin'), logActivity, addEmployeeToDepartment);
+router.delete('/:id/employees/:employeeId', authorize('admin'), logActivity, removeEmployeeFromDepartment);
 
 module.exports = router;
