@@ -18,7 +18,7 @@ const corsOptions = {
         ? [
             'https://thienphumut.vn',
             'https://www.thienphumut.vn',
-            'https://thienphumut-hr-frontend.vercel.app'  // Frontend Vercel URL
+            'https://api.thienphumut.vn/api'  // Frontend Vercel URL
           ]
         : '*',  // Allow all in development
     credentials: true,
