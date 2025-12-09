@@ -190,13 +190,20 @@ exports.createEmployee = asyncHandler(async (req, res) => {
 
     // Generate employee ID
     const lastEmployee = await pool.query(
-        'SELECT employee_id FROM employees ORDER BY id DESC LIMIT 1'
+        `SELECT employee_id FROM employees
+         WHERE employee_id LIKE 'EMP-%'
+         ORDER BY CAST(SUBSTRING(employee_id FROM 5) AS INTEGER) DESC
+         LIMIT 1`
     );
 
     let newEmployeeId = 'EMP-001';
     if (lastEmployee.rows.length > 0) {
-        const lastId = parseInt(lastEmployee.rows[0].employee_id.split('-')[1]);
-        newEmployeeId = `EMP-${String(lastId + 1).padStart(3, '0')}`;
+        const lastIdStr = lastEmployee.rows[0].employee_id.split('-')[1];
+        const lastId = parseInt(lastIdStr);
+
+        if (!isNaN(lastId)) {
+            newEmployeeId = `EMP-${String(lastId + 1).padStart(3, '0')}`;
+        }
     }
 
     // Hash password

@@ -102,4 +102,28 @@ router.post('/init', async (req, res) => {
     }
 });
 
+// @desc    Cleanup invalid employee IDs (EMP-NaN)
+// @route   DELETE /api/seed/cleanup-invalid-ids
+// @access  Public (Should be protected in production)
+router.delete('/cleanup-invalid-ids', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `DELETE FROM employees WHERE employee_id = 'EMP-NaN' RETURNING id, employee_id, email`
+        );
+
+        res.status(200).json({
+            success: true,
+            message: `Deleted ${result.rowCount} invalid employee record(s)`,
+            deletedRecords: result.rows
+        });
+    } catch (error) {
+        console.error('Cleanup error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Cleanup failed',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
