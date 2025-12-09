@@ -189,20 +189,27 @@ exports.createEmployee = asyncHandler(async (req, res) => {
     }
 
     // Generate employee ID
-    const lastEmployee = await pool.query(
-        `SELECT employee_id FROM employees
-         WHERE employee_id LIKE 'EMP-%'
-         ORDER BY CAST(SUBSTRING(employee_id FROM 5) AS INTEGER) DESC
-         LIMIT 1`
+    const allEmployees = await pool.query(
+        `SELECT employee_id FROM employees WHERE employee_id LIKE 'EMP-%'`
     );
 
     let newEmployeeId = 'EMP-001';
-    if (lastEmployee.rows.length > 0) {
-        const lastIdStr = lastEmployee.rows[0].employee_id.split('-')[1];
-        const lastId = parseInt(lastIdStr);
+    if (allEmployees.rows.length > 0) {
+        // Extract valid numeric IDs and find the maximum
+        const validIds = allEmployees.rows
+            .map(row => {
+                const parts = row.employee_id.split('-');
+                if (parts.length === 2 && parts[0] === 'EMP') {
+                    const num = parseInt(parts[1]);
+                    return !isNaN(num) ? num : 0;
+                }
+                return 0;
+            })
+            .filter(num => num > 0);
 
-        if (!isNaN(lastId)) {
-            newEmployeeId = `EMP-${String(lastId + 1).padStart(3, '0')}`;
+        if (validIds.length > 0) {
+            const maxId = Math.max(...validIds);
+            newEmployeeId = `EMP-${String(maxId + 1).padStart(3, '0')}`;
         }
     }
 

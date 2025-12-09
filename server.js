@@ -25,8 +25,8 @@ const corsOptions = {
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));  // Increase JSON payload limit for base64 images
+app.use(express.urlencoded({ limit: '50mb', extended: true }));  // Increase URL-encoded payload limit
 app.use(morgan('dev'));
 app.use(fileUpload({
     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
