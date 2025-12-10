@@ -35,6 +35,7 @@ app.use(fileUpload({
 
 // Static files for uploads
 app.use('/uploads', express.static('uploads'));
+app.use('/assets', express.static('assets'));
 
 // Test database connection
 testConnection();
