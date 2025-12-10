@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { sendPayrollEmail } = require('../controllers/emailController');
+
+// Use SendGrid controller (for production on Render)
+const { sendPayrollEmail } = require('../controllers/emailController_sendgrid');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect); // All routes require authentication
