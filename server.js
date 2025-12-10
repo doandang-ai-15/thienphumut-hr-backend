@@ -30,7 +30,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));  // Increase URL
 app.use(morgan('dev'));
 app.use(fileUpload({
     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
-    abortOnLimit: true
+    abortOnLimit: true,
+    useTempFiles: true, // Required for Cloudinary
+    tempFileDir: '/tmp/' // Temp directory for file uploads
 }));
 
 // Static files for uploads

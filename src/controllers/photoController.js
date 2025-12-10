@@ -41,8 +41,19 @@ exports.uploadPhoto = asyncHandler(async (req, res) => {
     }
 
     try {
+        console.log('📤 Starting Cloudinary upload...');
+        console.log('File details:', {
+            name: file.name,
+            size: file.size,
+            mimetype: file.mimetype,
+            hasTempFilePath: !!file.tempFilePath
+        });
+
         // Upload to Cloudinary
-        const result = await cloudinary.uploader.upload(file.tempFilePath, {
+        // express-fileupload provides tempFilePath
+        const uploadPath = file.tempFilePath || file.data;
+
+        const result = await cloudinary.uploader.upload(uploadPath, {
             folder: 'thienphumut-hr/employees', // Organize in folder
             resource_type: 'image',
             transformation: [
@@ -51,6 +62,8 @@ exports.uploadPhoto = asyncHandler(async (req, res) => {
                 { fetch_format: 'auto' } // Auto format (WebP, etc)
             ]
         });
+
+        console.log('✅ Cloudinary upload successful:', result.secure_url);
 
         // Return Cloudinary URL (this is what we'll store in DB)
         res.status(200).json({
@@ -63,10 +76,10 @@ exports.uploadPhoto = asyncHandler(async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Cloudinary upload error:', error);
+        console.error('❌ Cloudinary upload error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Failed to upload photo to cloud storage'
+            message: 'Failed to upload photo to cloud storage: ' + error.message
         });
     }
 });
