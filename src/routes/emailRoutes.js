@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-// Use Custom Mail Server (nhansu@thienphumut.vn)
-const { sendPayrollEmail } = require('../controllers/emailController_custom');
+// Use SendGrid API (works with Render hosting)
+const { sendPayrollEmail } = require('../controllers/emailController_sendgrid');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect); // All routes require authentication
