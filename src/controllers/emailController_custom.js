@@ -37,7 +37,10 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
         },
         tls: {
             rejectUnauthorized: false // Allow self-signed certificates
-        }
+        },
+        connectionTimeout: 60000, // 60 seconds
+        greetingTimeout: 30000,   // 30 seconds
+        socketTimeout: 60000      // 60 seconds
     };
 
     console.log('🔧 [CUSTOM MAIL] Mail config:', {
@@ -61,19 +64,8 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
         });
     }
 
-    // Verify connection
-    try {
-        console.log('🔌 [CUSTOM MAIL] Verifying SMTP connection...');
-        await transporter.verify();
-        console.log('✅ [CUSTOM MAIL] SMTP connection verified');
-    } catch (error) {
-        console.error('❌ [CUSTOM MAIL] SMTP verification failed:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to connect to mail server',
-            error: error.message
-        });
-    }
+    // Skip verification - will verify when sending
+    console.log('⏭️ [CUSTOM MAIL] Skipping verification, will verify during send');
 
     // Prepare attachments
     let attachments = [];
