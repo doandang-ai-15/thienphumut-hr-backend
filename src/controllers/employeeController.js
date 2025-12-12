@@ -283,7 +283,8 @@ exports.updateEmployee = asyncHandler(async (req, res) => {
         'first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
         'job_title', 'department_id', 'reports_to', 'employment_type',
         'start_date', 'salary', 'pay_frequency', 'address', 'city', 'state',
-        'zip_code', 'country', 'status', 'performance_score', 'role', 'photo'
+        'zip_code', 'country', 'status', 'performance_score', 'role', 'photo',
+        'have_gmail'
     ];
 
     const updates = [];
