@@ -291,7 +291,12 @@ exports.updateEmployee = asyncHandler(async (req, res) => {
     const values = [];
     let paramCount = 1;
 
+    // Debug logging
+    console.log('📝 [UPDATE EMPLOYEE] Request body:', req.body);
+    console.log('📝 [UPDATE EMPLOYEE] Allowed fields:', allowedFields);
+
     Object.keys(req.body).forEach(key => {
+        console.log(`🔍 [UPDATE EMPLOYEE] Checking field: ${key}, value: ${req.body[key]}, included: ${allowedFields.includes(key)}`);
         if (allowedFields.includes(key) && req.body[key] !== undefined) {
             updates.push(`${key} = $${paramCount}`);
             values.push(req.body[key]);
@@ -299,7 +304,11 @@ exports.updateEmployee = asyncHandler(async (req, res) => {
         }
     });
 
+    console.log('✅ [UPDATE EMPLOYEE] Updates array:', updates);
+    console.log('✅ [UPDATE EMPLOYEE] Values array:', values);
+
     if (updates.length === 0) {
+        console.error('❌ [UPDATE EMPLOYEE] No valid fields to update');
         return res.status(400).json({
             success: false,
             message: 'No valid fields to update'
