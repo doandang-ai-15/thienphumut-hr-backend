@@ -1,8 +1,13 @@
 const sgMail = require('@sendgrid/mail');
 const asyncHandler = require('../utils/asyncHandler');
 
-// Initialize SendGrid with API Key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Initialize SendGrid with API Key only if provided
+if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY.startsWith('SG.')) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    console.log('✅ [SENDGRID] API Key configured');
+} else {
+    console.warn('⚠️ [SENDGRID] API Key not configured or invalid - email sending will fail');
+}
 
 // @desc    Send payroll email using SendGrid API
 // @route   POST /api/email/send-payroll
