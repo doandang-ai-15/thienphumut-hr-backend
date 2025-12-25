@@ -28,12 +28,19 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));  // Increase JSON payload limit for base64 images
 app.use(express.urlencoded({ limit: '50mb', extended: true }));  // Increase URL-encoded payload limit
 app.use(morgan('dev'));
-app.use(fileUpload({
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
-    abortOnLimit: true,
-    useTempFiles: true, // Required for Cloudinary
-    tempFileDir: '/tmp/' // Temp directory for file uploads
-}));
+
+// Conditional file upload middleware - skip for /api/payroll routes (uses multer instead)
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/payroll')) {
+        return next(); // Skip express-fileupload for payroll routes
+    }
+    fileUpload({
+        limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+        abortOnLimit: true,
+        useTempFiles: true, // Required for Cloudinary
+        tempFileDir: '/tmp/' // Temp directory for file uploads
+    })(req, res, next);
+});
 
 // Static files for uploads
 app.use('/uploads', express.static('uploads'));
@@ -69,6 +76,7 @@ app.use('/api/contracts', require('./src/routes/contractRoutes'));
 app.use('/api/email', require('./src/routes/emailRoutes')); // Email endpoint
 app.use('/api/activity-logs', require('./src/routes/activityLogRoutes')); // Activity logs endpoint
 app.use('/api/seed', require('./src/routes/seedRoutes')); // Seed endpoint
+app.use('/api/payroll', require('./src/routes/payrollRoutes')); // Payroll batch generation endpoint
 
 // Error handler (must be last)
 app.use(errorHandler);

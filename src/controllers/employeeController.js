@@ -278,9 +278,24 @@ exports.updateEmployee = asyncHandler(async (req, res) => {
 
     const oldDepartmentId = employeeExists.rows[0].department_id;
 
+    // Check if employee_id is being updated and if it's unique
+    if (req.body.employee_id) {
+        const employeeIdExists = await pool.query(
+            'SELECT id FROM employees WHERE employee_id = $1 AND id != $2',
+            [req.body.employee_id, id]
+        );
+
+        if (employeeIdExists.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Employee ID already exists. Please use a different employee ID.'
+            });
+        }
+    }
+
     // Build update query dynamically
     const allowedFields = [
-        'first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'gender',
+        'first_name', 'last_name', 'email', 'employee_id', 'phone', 'date_of_birth', 'gender',
         'job_title', 'department_id', 'reports_to', 'employment_type',
         'start_date', 'salary', 'pay_frequency', 'address', 'city', 'state',
         'zip_code', 'country', 'status', 'performance_score', 'role', 'photo',

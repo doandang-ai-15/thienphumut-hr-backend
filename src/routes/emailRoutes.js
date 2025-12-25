@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-// Use SendGrid API (works with Render hosting)
-const { sendPayrollEmail } = require('../controllers/emailController_sendgrid');
+// Use custom SMTP server (mail.thienphumut.vn) - no verification needed
+const { sendPayrollEmail } = require('../controllers/emailController_custom');
 const { protect, authorize } = require('../middleware/auth');
 
 router.use(protect); // All routes require authentication

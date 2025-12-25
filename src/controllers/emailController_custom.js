@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 const asyncHandler = require('../utils/asyncHandler');
+const fs = require('fs').promises;
 
 // @desc    Send payroll email using custom mail server
 // @route   POST /api/email/send-payroll
@@ -75,13 +76,26 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
         console.log('📎 [CUSTOM MAIL] File details:', {
             name: file.name,
             size: file.size,
-            mimetype: file.mimetype
+            mimetype: file.mimetype,
+            tempFilePath: file.tempFilePath,
+            dataType: typeof file.data,
+            isBuffer: Buffer.isBuffer(file.data)
         });
+
+        // Read file from temp path if available, otherwise use buffer
+        let fileContent;
+        if (file.tempFilePath) {
+            console.log('📁 [CUSTOM MAIL] Reading file from temp path:', file.tempFilePath);
+            fileContent = await fs.readFile(file.tempFilePath);
+        } else {
+            console.log('📦 [CUSTOM MAIL] Using file buffer directly');
+            fileContent = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data);
+        }
 
         attachments.push({
             filename: file.name,
-            content: file.data,
-            contentType: file.mimetype
+            content: fileContent,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' // Proper Excel MIME type
         });
     }
 
@@ -127,14 +141,30 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
     };
 
     // Send email
+    let tempFilePath = null;
     try {
         console.log('📤 [CUSTOM MAIL] Sending email to:', recipientEmail);
+
+        // Store temp file path for cleanup
+        if (req.files && req.files.file && req.files.file.tempFilePath) {
+            tempFilePath = req.files.file.tempFilePath;
+        }
 
         const info = await transporter.sendMail(mailOptions);
 
         console.log('✅ [CUSTOM MAIL] Email sent successfully');
         console.log('📧 [CUSTOM MAIL] Message ID:', info.messageId);
         console.log('📧 [CUSTOM MAIL] Response:', info.response);
+
+        // Cleanup temp file after successful send
+        if (tempFilePath) {
+            try {
+                await fs.unlink(tempFilePath);
+                console.log('🗑️ [CUSTOM MAIL] Cleaned up temp file:', tempFilePath);
+            } catch (cleanupError) {
+                console.warn('⚠️ [CUSTOM MAIL] Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
 
         res.status(200).json({
             success: true,
@@ -143,6 +173,16 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [CUSTOM MAIL] Error sending email:', error);
+
+        // Cleanup temp file even on error
+        if (tempFilePath) {
+            try {
+                await fs.unlink(tempFilePath);
+                console.log('🗑️ [CUSTOM MAIL] Cleaned up temp file after error:', tempFilePath);
+            } catch (cleanupError) {
+                console.warn('⚠️ [CUSTOM MAIL] Failed to cleanup temp file:', cleanupError.message);
+            }
+        }
 
         res.status(500).json({
             success: false,
