@@ -155,6 +155,7 @@ exports.createEmployee = asyncHandler(async (req, res) => {
         first_name,
         last_name,
         email,
+        employee_id, // Allow custom employee_id from frontend
         password = 'password123', // Default password
         phone,
         date_of_birth,
@@ -188,28 +189,48 @@ exports.createEmployee = asyncHandler(async (req, res) => {
         });
     }
 
-    // Generate employee ID
-    const allEmployees = await pool.query(
-        `SELECT employee_id FROM employees WHERE employee_id LIKE 'EMP-%'`
-    );
+    // Determine employee_id: use provided one or auto-generate
+    let newEmployeeId;
 
-    let newEmployeeId = 'EMP-001';
-    if (allEmployees.rows.length > 0) {
-        // Extract valid numeric IDs and find the maximum
-        const validIds = allEmployees.rows
-            .map(row => {
-                const parts = row.employee_id.split('-');
-                if (parts.length === 2 && parts[0] === 'EMP') {
-                    const num = parseInt(parts[1]);
-                    return !isNaN(num) ? num : 0;
-                }
-                return 0;
-            })
-            .filter(num => num > 0);
+    if (employee_id && employee_id.trim() !== '') {
+        // User provided employee_id - check if it already exists
+        const idExists = await pool.query(
+            'SELECT id FROM employees WHERE employee_id = $1',
+            [employee_id.trim()]
+        );
 
-        if (validIds.length > 0) {
-            const maxId = Math.max(...validIds);
-            newEmployeeId = `EMP-${String(maxId + 1).padStart(3, '0')}`;
+        if (idExists.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Mã nhân viên "${employee_id}" đã tồn tại. Vui lòng chọn mã khác.`
+            });
+        }
+
+        newEmployeeId = employee_id.trim();
+    } else {
+        // Auto-generate employee ID
+        const allEmployees = await pool.query(
+            `SELECT employee_id FROM employees WHERE employee_id LIKE 'EMP-%'`
+        );
+
+        newEmployeeId = 'EMP-001';
+        if (allEmployees.rows.length > 0) {
+            // Extract valid numeric IDs and find the maximum
+            const validIds = allEmployees.rows
+                .map(row => {
+                    const parts = row.employee_id.split('-');
+                    if (parts.length === 2 && parts[0] === 'EMP') {
+                        const num = parseInt(parts[1]);
+                        return !isNaN(num) ? num : 0;
+                    }
+                    return 0;
+                })
+                .filter(num => num > 0);
+
+            if (validIds.length > 0) {
+                const maxId = Math.max(...validIds);
+                newEmployeeId = `EMP-${String(maxId + 1).padStart(3, '0')}`;
+            }
         }
     }
 
