@@ -39,9 +39,11 @@ exports.sendPayrollEmail = asyncHandler(async (req, res) => {
         tls: {
             rejectUnauthorized: false // Allow self-signed certificates
         },
-        connectionTimeout: 60000, // 60 seconds
-        greetingTimeout: 30000,   // 30 seconds
-        socketTimeout: 60000      // 60 seconds
+        connectionTimeout: 90000, // 90 seconds
+        greetingTimeout: 60000,   // 60 seconds
+        socketTimeout: 90000,     // 90 seconds
+        logger: true,             // Enable logging
+        debug: true               // Enable debug output
     };
 
     console.log('🔧 [CUSTOM MAIL] Mail config:', {

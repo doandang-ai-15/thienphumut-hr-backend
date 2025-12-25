@@ -231,10 +231,19 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
             tls: {
                 rejectUnauthorized: false
             },
-            connectionTimeout: 60000,
-            greetingTimeout: 30000,
-            socketTimeout: 60000
+            connectionTimeout: 90000,  // Increased to 90 seconds
+            greetingTimeout: 60000,    // Increased to 60 seconds
+            socketTimeout: 90000,      // Increased to 90 seconds
+            logger: true,              // Enable logging
+            debug: true                // Enable debug output
         };
+
+        console.log('📧 [BATCH SEND] Mail config:', {
+            host: mailConfig.host,
+            port: mailConfig.port,
+            secure: mailConfig.secure,
+            user: mailConfig.auth.user
+        });
 
         const transporter = nodemailer.createTransport(mailConfig);
 

@@ -77,6 +77,7 @@ app.use('/api/email', require('./src/routes/emailRoutes')); // Email endpoint
 app.use('/api/activity-logs', require('./src/routes/activityLogRoutes')); // Activity logs endpoint
 app.use('/api/seed', require('./src/routes/seedRoutes')); // Seed endpoint
 app.use('/api/payroll', require('./src/routes/payrollRoutes')); // Payroll batch generation endpoint
+app.use('/api', require('./src/routes/testMailRoutes')); // Test mail connection endpoint
 
 // Error handler (must be last)
 app.use(errorHandler);
