@@ -299,15 +299,17 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         let finalValue = sourceValue;
 
                         // Handle different mapping types
-                        if (mapping.type === 'days') {
-                            const numValue = parseFloat(sourceValue) || sourceValue;
-                            finalValue = `${numValue} ngày`;
-                        } else if (mapping.type === 'currency') {
+                        if (mapping.type === 'currency') {
+                            // Parse currency values (remove VND and convert to number)
                             if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                                 const numStr = sourceValue.replace(/[^\d.-]/g, '');
                                 finalValue = parseFloat(numStr) || sourceValue;
                             }
+                        } else if (mapping.type === 'days') {
+                            // Keep days values as-is (already formatted with "ngày" in source data)
+                            finalValue = sourceValue;
                         } else {
+                            // Default: parse currency if contains VND
                             if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                                 const numStr = sourceValue.replace(/[^\d.-]/g, '');
                                 finalValue = parseFloat(numStr) || sourceValue;
