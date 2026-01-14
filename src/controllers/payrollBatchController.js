@@ -88,7 +88,43 @@ exports.generateBatchPayroll = async (req, res) => {
                 { target: 'E25', source: { col: 15, row: rowIndex } },  // P[index+2] - Union Deduction
                 { target: 'H26', source: { col: 16, row: rowIndex } },  // Q[index+2] - Insurance
                 { target: 'E28', source: { col: 17, row: rowIndex } },  // R[index+2] - Total Deductions
-                { target: 'E29', source: { col: 18, row: rowIndex } }   // S[index+2] - Net Salary
+                { target: 'E29', source: { col: 18, row: rowIndex } },  // S[index+2] - Net Salary
+                // New mappings - Số ngày (days format)
+                { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },   // T[index+2]
+                { target: 'D12', source: { col: 21, row: rowIndex }, type: 'days' },   // V[index+2]
+                { target: 'D14', source: { col: 26, row: rowIndex }, type: 'days' },   // AA[index+2]
+                { target: 'D15', source: { col: 28, row: rowIndex }, type: 'days' },   // AC[index+2]
+                { target: 'D16', source: { col: 30, row: rowIndex }, type: 'days' },   // AE[index+2]
+                { target: 'D17', source: { col: 32, row: rowIndex }, type: 'days' },   // AG[index+2]
+                { target: 'D19', source: { col: 35, row: rowIndex }, type: 'days' },   // AJ[index+2]
+                { target: 'D20', source: { col: 37, row: rowIndex }, type: 'days' },   // AL[index+2]
+                { target: 'D21', source: { col: 39, row: rowIndex }, type: 'days' },   // AN[index+2]
+                // New mappings - Tiền tệ (currency format)
+                { target: 'E11', source: { col: 20, row: rowIndex }, type: 'currency' },   // U[index+2]
+                { target: 'E12', source: { col: 22, row: rowIndex }, type: 'currency' },   // W[index+2]
+                { target: 'H10', source: { col: 23, row: rowIndex }, type: 'currency' },   // X[index+2]
+                { target: 'H11', source: { col: 24, row: rowIndex }, type: 'currency' },   // Y[index+2]
+                { target: 'H12', source: { col: 25, row: rowIndex }, type: 'currency' },   // Z[index+2]
+                { target: 'E14', source: { col: 27, row: rowIndex }, type: 'currency' },   // AB[index+2]
+                { target: 'E15', source: { col: 29, row: rowIndex }, type: 'currency' },   // AD[index+2]
+                { target: 'E16', source: { col: 31, row: rowIndex }, type: 'currency' },   // AF[index+2]
+                { target: 'E17', source: { col: 33, row: rowIndex }, type: 'currency' },   // AH[index+2]
+                { target: 'E18', source: { col: 34, row: rowIndex }, type: 'currency' },   // AI[index+2]
+                { target: 'E19', source: { col: 36, row: rowIndex }, type: 'currency' },   // AK[index+2]
+                { target: 'E20', source: { col: 38, row: rowIndex }, type: 'currency' },   // AM[index+2]
+                { target: 'E22', source: { col: 40, row: rowIndex }, type: 'currency' },   // AO[index+2]
+                { target: 'H16', source: { col: 41, row: rowIndex }, type: 'currency' },   // AP[index+2]
+                { target: 'H17', source: { col: 42, row: rowIndex }, type: 'currency' },   // AQ[index+2]
+                { target: 'H18', source: { col: 43, row: rowIndex }, type: 'currency' },   // AR[index+2]
+                { target: 'H19', source: { col: 44, row: rowIndex }, type: 'currency' },   // AS[index+2]
+                { target: 'H20', source: { col: 45, row: rowIndex }, type: 'currency' },   // AT[index+2]
+                { target: 'H21', source: { col: 46, row: rowIndex }, type: 'currency' },   // AU[index+2]
+                { target: 'H22', source: { col: 47, row: rowIndex }, type: 'currency' },   // AV[index+2]
+                { target: 'E24', source: { col: 48, row: rowIndex }, type: 'currency' },   // AW[index+2]
+                { target: 'E26', source: { col: 49, row: rowIndex }, type: 'currency' },   // AX[index+2]
+                { target: 'E27', source: { col: 50, row: rowIndex }, type: 'currency' },   // AY[index+2]
+                { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' },   // AZ[index+2]
+                { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }    // BA[index+2]
             ];
 
             // Apply each mapping
@@ -101,10 +137,23 @@ exports.generateBatchPayroll = async (req, res) => {
                     // Parse value - handle both number and formatted string
                     let finalValue = sourceValue;
 
-                    // If value is string like "VND 7,000,000", extract the number
-                    if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
-                        const numStr = sourceValue.replace(/[^\d.-]/g, '');
-                        finalValue = parseFloat(numStr) || sourceValue;
+                    // Handle different mapping types
+                    if (mapping.type === 'days') {
+                        // Format as "X ngày" (e.g., "3 ngày")
+                        const numValue = parseFloat(sourceValue) || sourceValue;
+                        finalValue = `${numValue} ngày`;
+                    } else if (mapping.type === 'currency') {
+                        // Handle currency format like existing column S
+                        if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                            const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                            finalValue = parseFloat(numStr) || sourceValue;
+                        }
+                    } else {
+                        // Default: handle VND format for backward compatibility
+                        if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                            const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                            finalValue = parseFloat(numStr) || sourceValue;
+                        }
                     }
 
                     cell.value = finalValue;
@@ -342,7 +391,43 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'E25', source: { col: 15, row: rowIndex } },
                     { target: 'H26', source: { col: 16, row: rowIndex } },
                     { target: 'E28', source: { col: 17, row: rowIndex } },
-                    { target: 'E29', source: { col: 18, row: rowIndex } }
+                    { target: 'E29', source: { col: 18, row: rowIndex } },
+                    // New mappings - Số ngày (days format)
+                    { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },
+                    { target: 'D12', source: { col: 21, row: rowIndex }, type: 'days' },
+                    { target: 'D14', source: { col: 26, row: rowIndex }, type: 'days' },
+                    { target: 'D15', source: { col: 28, row: rowIndex }, type: 'days' },
+                    { target: 'D16', source: { col: 30, row: rowIndex }, type: 'days' },
+                    { target: 'D17', source: { col: 32, row: rowIndex }, type: 'days' },
+                    { target: 'D19', source: { col: 35, row: rowIndex }, type: 'days' },
+                    { target: 'D20', source: { col: 37, row: rowIndex }, type: 'days' },
+                    { target: 'D21', source: { col: 39, row: rowIndex }, type: 'days' },
+                    // New mappings - Tiền tệ (currency format)
+                    { target: 'E11', source: { col: 20, row: rowIndex }, type: 'currency' },
+                    { target: 'E12', source: { col: 22, row: rowIndex }, type: 'currency' },
+                    { target: 'H10', source: { col: 23, row: rowIndex }, type: 'currency' },
+                    { target: 'H11', source: { col: 24, row: rowIndex }, type: 'currency' },
+                    { target: 'H12', source: { col: 25, row: rowIndex }, type: 'currency' },
+                    { target: 'E14', source: { col: 27, row: rowIndex }, type: 'currency' },
+                    { target: 'E15', source: { col: 29, row: rowIndex }, type: 'currency' },
+                    { target: 'E16', source: { col: 31, row: rowIndex }, type: 'currency' },
+                    { target: 'E17', source: { col: 33, row: rowIndex }, type: 'currency' },
+                    { target: 'E18', source: { col: 34, row: rowIndex }, type: 'currency' },
+                    { target: 'E19', source: { col: 36, row: rowIndex }, type: 'currency' },
+                    { target: 'E20', source: { col: 38, row: rowIndex }, type: 'currency' },
+                    { target: 'E22', source: { col: 40, row: rowIndex }, type: 'currency' },
+                    { target: 'H16', source: { col: 41, row: rowIndex }, type: 'currency' },
+                    { target: 'H17', source: { col: 42, row: rowIndex }, type: 'currency' },
+                    { target: 'H18', source: { col: 43, row: rowIndex }, type: 'currency' },
+                    { target: 'H19', source: { col: 44, row: rowIndex }, type: 'currency' },
+                    { target: 'H20', source: { col: 45, row: rowIndex }, type: 'currency' },
+                    { target: 'H21', source: { col: 46, row: rowIndex }, type: 'currency' },
+                    { target: 'H22', source: { col: 47, row: rowIndex }, type: 'currency' },
+                    { target: 'E24', source: { col: 48, row: rowIndex }, type: 'currency' },
+                    { target: 'E26', source: { col: 49, row: rowIndex }, type: 'currency' },
+                    { target: 'E27', source: { col: 50, row: rowIndex }, type: 'currency' },
+                    { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' },
+                    { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }
                 ];
 
                 mappings.forEach(mapping => {
@@ -350,10 +435,26 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     if (sourceValue !== null && sourceValue !== undefined && sourceValue !== '') {
                         const cell = worksheet.getCell(mapping.target);
                         let finalValue = sourceValue;
-                        if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
-                            const numStr = sourceValue.replace(/[^\d.-]/g, '');
-                            finalValue = parseFloat(numStr) || sourceValue;
+
+                        // Handle different mapping types
+                        if (mapping.type === 'days') {
+                            // Format as "X ngày" (e.g., "3 ngày")
+                            const numValue = parseFloat(sourceValue) || sourceValue;
+                            finalValue = `${numValue} ngày`;
+                        } else if (mapping.type === 'currency') {
+                            // Handle currency format like existing column S
+                            if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                                const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                                finalValue = parseFloat(numStr) || sourceValue;
+                            }
+                        } else {
+                            // Default: handle VND format for backward compatibility
+                            if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                                const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                                finalValue = parseFloat(numStr) || sourceValue;
+                            }
                         }
+
                         cell.value = finalValue;
                     }
                 });

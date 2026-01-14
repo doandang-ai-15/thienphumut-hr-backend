@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const payrollBatchController = require('../controllers/payrollBatchController');
-const payrollBatchControllerSendGrid = require('../controllers/payrollBatchController_sendgrid');
+const payrollBatchControllerBrevo = require('../controllers/payrollBatchController_brevo');
 const { protect, authorize } = require('../middleware/auth');
 
 // Configure multer for file upload
@@ -45,7 +45,7 @@ router.post(
     protect,
     authorize('admin'),
     upload.single('overallPayroll'),
-    payrollBatchControllerSendGrid.generateAndSendBatchPayroll
+    payrollBatchControllerBrevo.generateAndSendBatchPayroll
 );
 
 router.get(

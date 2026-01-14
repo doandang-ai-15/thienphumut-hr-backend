@@ -2,14 +2,16 @@ const XLSX = require('xlsx');
 const ExcelJS = require('exceljs');
 const path = require('path');
 const fs = require('fs').promises;
-const sgMail = require('@sendgrid/mail');
+const brevo = require('@getbrevo/brevo');
 const { pool } = require('../config/database');
 
-// Initialize SendGrid
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Initialize Brevo API
+let apiInstance = new brevo.TransactionalEmailsApi();
+let apiKey = apiInstance.authentications['apiKey'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
 
 // Daily email limit
-const DAILY_EMAIL_LIMIT = 80;
+const DAILY_EMAIL_LIMIT = 300; // Brevo free plan: 300 emails/day
 
 /**
  * Get today's email count from database
@@ -21,7 +23,7 @@ async function getTodayEmailCount() {
         const result = await pool.query(
             `SELECT COUNT(*) as count
              FROM email_logs
-             WHERE DATE(sent_at) = $1 AND status = 'success'`,
+             WHERE DATE(sent_at) = $1 AND status = 'sent'`,
             [today]
         );
 
@@ -38,7 +40,7 @@ async function getTodayEmailCount() {
 async function logSentEmail(employeeId, email, status, error = null) {
     try {
         await pool.query(
-            `INSERT INTO email_logs (employee_id, email, status, error, sent_at)
+            `INSERT INTO email_logs (employee_id, recipient_email, status, error_message, sent_at)
              VALUES ($1, $2, $3, $4, NOW())`,
             [employeeId, email, status, error]
         );
@@ -48,12 +50,12 @@ async function logSentEmail(employeeId, email, status, error = null) {
 }
 
 /**
- * Generate batch payroll files AND send emails using SendGrid
- * With daily limit of 80 emails
+ * Generate batch payroll files AND send emails using Brevo API
+ * With daily limit of 300 emails
  */
 exports.generateAndSendBatchPayroll = async (req, res) => {
     try {
-        console.log('📊 [BATCH SEND] Starting batch generation and email sending with SendGrid...');
+        console.log('📊 [BATCH SEND - BREVO] Starting batch generation and email sending...');
 
         // Setup SSE headers for real-time progress
         res.setHeader('Content-Type', 'text/event-stream');
@@ -141,7 +143,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
             noGmail: [],
             notFound: [],
             failed: [],
-            limitReached: []  // New category for emails not sent due to limit
+            limitReached: []
         };
 
         let emailsSentThisSession = 0;
@@ -230,7 +232,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 await workbook.xlsx.readFile(templatePath);
                 const worksheet = workbook.getWorksheet(1);
 
-                // Apply mapping
+                // Apply mapping (same as other controllers)
                 const mappings = [
                     { target: 'M1', source: { col: 1, row: 1 } },
                     { target: 'C5', source: { col: 0, row: rowIndex } },
@@ -298,17 +300,14 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
 
                         // Handle different mapping types
                         if (mapping.type === 'days') {
-                            // Format as "X ngày" (e.g., "3 ngày")
                             const numValue = parseFloat(sourceValue) || sourceValue;
                             finalValue = `${numValue} ngày`;
                         } else if (mapping.type === 'currency') {
-                            // Handle currency format like existing column S
                             if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                                 const numStr = sourceValue.replace(/[^\d.-]/g, '');
                                 finalValue = parseFloat(numStr) || sourceValue;
                             }
                         } else {
-                            // Default: handle VND format for backward compatibility
                             if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                                 const numStr = sourceValue.replace(/[^\d.-]/g, '');
                                 finalValue = parseFloat(numStr) || sourceValue;
@@ -321,62 +320,64 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
 
                 // Save file to buffer
                 const buffer = await workbook.xlsx.writeBuffer();
+                const base64Attachment = buffer.toString('base64');
 
-                // Prepare email with SendGrid
+                // Prepare email with Brevo API
                 const subject = `Bảng lương tháng ${monthPeriod} - ${employee.first_name} ${employee.last_name}`;
                 const fileName = `payroll_${employeeCode}_${employeeName.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
 
-                const msg = {
-                    to: employee.email,
-                    from: {
-                        email: process.env.SENDGRID_SENDER_EMAIL,
-                        name: process.env.MAIL_FROM_NAME || 'Thiên Phú Mút HR'
-                    },
-                    subject: subject,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-                            <div style="background: linear-gradient(135deg, #F875AA 0%, #AEDEFC 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-                                <h1 style="color: white; margin: 0; font-size: 28px;">Thiên Phú Mút</h1>
-                                <p style="color: white; margin: 10px 0 0 0; font-size: 14px;">Hệ thống Quản lý Nhân sự</p>
-                            </div>
+                const sendSmtpEmail = new brevo.SendSmtpEmail();
 
-                            <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                                <h2 style="color: #F875AA; margin-top: 0;">Bảng lương tháng ${monthPeriod}</h2>
-                                <p style="color: #333; line-height: 1.6;">Xin chào <strong>${employee.first_name} ${employee.last_name}</strong>,</p>
-                                <p style="color: #333; line-height: 1.6;">Vui lòng xem bảng lương của bạn trong file đính kèm.</p>
-                                <p style="color: #333; line-height: 1.6;">Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ với bộ phận nhân sự.</p>
-
-                                <div style="margin: 30px 0; padding: 20px; background-color: #EDFFF0; border-left: 4px solid #AEDEFC; border-radius: 5px;">
-                                    <p style="margin: 0; color: #666; font-size: 14px;">
-                                        <strong>Lưu ý:</strong> Đây là email tự động từ hệ thống. Vui lòng không trả lời email này.
-                                    </p>
-                                </div>
-
-                                <p style="color: #666; margin-top: 30px;">Trân trọng,</p>
-                                <p style="color: #666; margin: 5px 0;"><strong>Bộ phận Nhân sự</strong></p>
-                                <p style="color: #666; margin: 0;">Thiên Phú Mút</p>
-                            </div>
-
-                            <div style="text-align: center; margin-top: 20px; padding: 20px; color: #999; font-size: 12px;">
-                                <p style="margin: 0;">© ${new Date().getFullYear()} Thiên Phú Mút. All rights reserved.</p>
-                                <p style="margin: 5px 0 0 0;">Email: nhansu@thienphumut.vn | Website: thienphumut.vn</p>
-                            </div>
-                        </div>
-                    `,
-                    attachments: [{
-                        content: buffer.toString('base64'),
-                        filename: fileName,
-                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        disposition: 'attachment'
-                    }]
+                sendSmtpEmail.subject = subject;
+                sendSmtpEmail.to = [{
+                    email: employee.email,
+                    name: `${employee.first_name} ${employee.last_name}`
+                }];
+                sendSmtpEmail.sender = {
+                    name: process.env.MAIL_FROM_NAME || 'Thiên Phú Mút HR',
+                    email: process.env.BREVO_SENDER_EMAIL || 'nhansu@thienphumut.vn'
                 };
+                sendSmtpEmail.htmlContent = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+                        <div style="background: linear-gradient(135deg, #F875AA 0%, #AEDEFC 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+                            <h1 style="color: white; margin: 0; font-size: 28px;">Thiên Phú Mút</h1>
+                            <p style="color: white; margin: 10px 0 0 0; font-size: 14px;">Hệ thống Quản lý Nhân sự</p>
+                        </div>
 
-                // Send email with SendGrid
+                        <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            <h2 style="color: #F875AA; margin-top: 0;">Bảng lương tháng ${monthPeriod}</h2>
+                            <p style="color: #333; line-height: 1.6;">Xin chào <strong>${employee.first_name} ${employee.last_name}</strong>,</p>
+                            <p style="color: #333; line-height: 1.6;">Vui lòng xem bảng lương của bạn trong file đính kèm.</p>
+                            <p style="color: #333; line-height: 1.6;">Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ với bộ phận nhân sự.</p>
+
+                            <div style="margin: 30px 0; padding: 20px; background-color: #EDFFF0; border-left: 4px solid #AEDEFC; border-radius: 5px;">
+                                <p style="margin: 0; color: #666; font-size: 14px;">
+                                    <strong>Lưu ý:</strong> Đây là email tự động từ hệ thống. Vui lòng không trả lời email này.
+                                </p>
+                            </div>
+
+                            <p style="color: #666; margin-top: 30px;">Trân trọng,</p>
+                            <p style="color: #666; margin: 5px 0;"><strong>Bộ phận Nhân sự</strong></p>
+                            <p style="color: #666; margin: 0;">Thiên Phú Mút</p>
+                        </div>
+
+                        <div style="text-align: center; margin-top: 20px; padding: 20px; color: #999; font-size: 12px;">
+                            <p style="margin: 0;">© ${new Date().getFullYear()} Thiên Phú Mút. All rights reserved.</p>
+                            <p style="margin: 5px 0 0 0;">Email: nhansu@thienphumut.vn | Website: thienphumut.vn</p>
+                        </div>
+                    </div>
+                `;
+                sendSmtpEmail.attachment = [{
+                    content: base64Attachment,
+                    name: fileName
+                }];
+
+                // Send email via Brevo
                 const startTime = Date.now();
-                await sgMail.send(msg);
+                await apiInstance.sendTransacEmail(sendSmtpEmail);
                 const sendDuration = Date.now() - startTime;
 
-                console.log(`✅ Email sent successfully to ${employee.email} (took ${sendDuration}ms)`);
+                console.log(`✅ Email sent successfully to ${employee.email} via Brevo (took ${sendDuration}ms)`);
 
                 // Log to database
                 await logSentEmail(employee.id, employee.email, 'success');
@@ -397,16 +398,16 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     status: 'success',
                     employeeName: `${employee.first_name} ${employee.last_name}`,
                     employeeCode,
-                    email: employee.email,
-                    emailsSentToday: todayCount + emailsSentThisSession,
-                    remainingQuota: DAILY_EMAIL_LIMIT - (todayCount + emailsSentThisSession)
+                    email: employee.email
                 });
 
-                // Small delay to avoid rate limiting (SendGrid allows 600 emails/second but let's be safe)
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Rate limiting: wait 100ms before next email (Brevo allows 100+ emails/second)
+                if (empIndex < employeeCount) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
 
             } catch (emailError) {
-                console.error(`❌ Failed to send email to ${employee.email}:`, emailError);
+                console.error(`❌ Failed to send email to ${employee.email}:`, emailError.message);
 
                 // Log to database
                 await logSentEmail(employee.id, employee.email, 'failed', emailError.message);
@@ -415,7 +416,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     employeeName: `${employee.first_name} ${employee.last_name}`,
                     employeeCode,
                     email: employee.email,
-                    error: emailError.message || 'Unknown error'
+                    error: emailError.message
                 });
 
                 sendProgress({
@@ -434,13 +435,11 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
         // Clean up uploaded file
         await fs.unlink(overallPayrollPath);
 
-        console.log(`\n🎉 [BATCH SEND] Processing complete!`);
+        console.log(`\n🎉 [BATCH SEND - BREVO] Processing complete!`);
         console.log(`✅ Success: ${results.success.length}`);
         console.log(`⚠️ No Gmail: ${results.noGmail.length}`);
         console.log(`❌ Not Found: ${results.notFound.length}`);
         console.log(`❌ Failed: ${results.failed.length}`);
-        console.log(`⏸️ Limit Reached: ${results.limitReached.length}`);
-        console.log(`📧 Total emails sent today: ${todayCount + emailsSentThisSession}/${DAILY_EMAIL_LIMIT}`);
 
         // Send final complete message
         sendProgress({
@@ -451,18 +450,16 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 noGmail: results.noGmail.length,
                 notFound: results.notFound.length,
                 failed: results.failed.length,
-                limitReached: results.limitReached.length,
-                totalSentToday: todayCount + emailsSentThisSession,
-                dailyLimit: DAILY_EMAIL_LIMIT,
-                remainingQuota: DAILY_EMAIL_LIMIT - (todayCount + emailsSentThisSession)
+                limitReached: results.limitReached.length
             },
             results: results
         });
 
+        // Close SSE connection
         res.end();
 
     } catch (error) {
-        console.error('❌ [BATCH SEND] Error:', error);
+        console.error('❌ [BATCH SEND - BREVO] Error:', error);
 
         try {
             res.write(`data: ${JSON.stringify({
