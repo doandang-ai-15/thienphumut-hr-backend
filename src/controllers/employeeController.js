@@ -192,21 +192,26 @@ exports.createEmployee = asyncHandler(async (req, res) => {
     // Determine employee_id: use provided one or auto-generate
     let newEmployeeId;
 
-    if (employee_id && employee_id.trim() !== '') {
-        // User provided employee_id - check if it already exists
-        const idExists = await pool.query(
-            'SELECT id FROM employees WHERE employee_id = $1',
-            [employee_id.trim()]
-        );
+    if (employee_id) {
+        // Convert employee_id to string (in case it's a number from Excel)
+        const employeeIdStr = String(employee_id).trim();
 
-        if (idExists.rows.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: `Mã nhân viên "${employee_id}" đã tồn tại. Vui lòng chọn mã khác.`
-            });
+        if (employeeIdStr !== '') {
+            // User provided employee_id - check if it already exists
+            const idExists = await pool.query(
+                'SELECT id FROM employees WHERE employee_id = $1',
+                [employeeIdStr]
+            );
+
+            if (idExists.rows.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Mã nhân viên "${employeeIdStr}" đã tồn tại. Vui lòng chọn mã khác.`
+                });
+            }
+
+            newEmployeeId = employeeIdStr;
         }
-
-        newEmployeeId = employee_id.trim();
     } else {
         // Auto-generate employee ID
         const allEmployees = await pool.query(
@@ -415,7 +420,7 @@ exports.deleteEmployee = asyncHandler(async (req, res) => {
     if (parseInt(id) === req.user.id) {
         return res.status(400).json({
             success: false,
-            message: 'You cannot delete your own account'
+            message: 'Bạn không thể tự xóa tài khoản của bạn.'
         });
     }
 

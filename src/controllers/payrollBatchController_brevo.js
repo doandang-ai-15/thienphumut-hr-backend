@@ -288,36 +288,88 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'E24', source: { col: 48, row: rowIndex }, type: 'currency' },
                     { target: 'E26', source: { col: 49, row: rowIndex }, type: 'currency' },
                     { target: 'E27', source: { col: 50, row: rowIndex }, type: 'currency' },
-                    { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' },
-                    { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }
+                    { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' }, // A[AZ]
+                    { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }, // A[BA]
+                    { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency' }, // A[BC]
+                    { target: 'H27', source: { col: 55, row: rowIndex }, type: 'currency' }, // A[BD]
+                    { target: 'H28', source: { col: 56, row: rowIndex }, type: 'currency' }, // A[BE]
+                    // New mapping - A[BB] to B[H6]
+                    { target: 'H6', source: { col: 53, row: rowIndex } } // A[BB]
                 ];
 
                 mappings.forEach(mapping => {
                     const sourceValue = overallData[mapping.source.row]?.[mapping.source.col];
-                    if (sourceValue !== null && sourceValue !== undefined && sourceValue !== '') {
-                        const cell = worksheet.getCell(mapping.target);
-                        let finalValue = sourceValue;
 
-                        // Handle different mapping types
-                        if (mapping.type === 'currency') {
-                            // Parse currency values (remove VND and convert to number)
-                            if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
-                                const numStr = sourceValue.replace(/[^\d.-]/g, '');
-                                finalValue = parseFloat(numStr) || sourceValue;
+                    // Skip if value is null, undefined, or empty string
+                    if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
+                        return; // Don't map, keep original value in B file
+                    }
+
+                    // Skip if value is exactly 0 (number)
+                    if (sourceValue === 0) {
+                        return; // Don't map, keep original value in B file
+                    }
+
+                    // Skip if value is "VND 0" or similar currency zero formats
+                    if (typeof sourceValue === 'string') {
+                        const trimmed = sourceValue.trim();
+                        // Check for "VND 0", "VND0", "0 VND", etc.
+                        if (trimmed === 'VND 0' || trimmed === 'VND0' || trimmed === '0 VND' ||
+                            trimmed === '0VND' || /^VND\s*0+$/.test(trimmed) || /^0+\s*VND$/.test(trimmed)) {
+                            return; // Don't map, keep original value in B file
+                        }
+                    }
+
+                    const cell = worksheet.getCell(mapping.target);
+                    let finalValue = sourceValue;
+
+                    // Handle different mapping types
+                    if (mapping.type === 'currency') {
+                        // Parse currency values (remove VND and convert to number)
+                        if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                            const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                            const parsedValue = parseFloat(numStr);
+
+                            // Skip if parsed value is 0 or NaN
+                            if (!parsedValue || parsedValue === 0) {
+                                return; // Don't map, keep original value in B file
                             }
-                        } else if (mapping.type === 'days') {
-                            // Keep days values as-is (already formatted with "ngày" in source data)
+
+                            finalValue = parsedValue;
+                        } else if (typeof sourceValue === 'number') {
+                            // If it's already a number, check if it's 0
+                            if (sourceValue === 0) {
+                                return; // Don't map, keep original value in B file
+                            }
                             finalValue = sourceValue;
-                        } else {
-                            // Default: parse currency if contains VND
-                            if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
-                                const numStr = sourceValue.replace(/[^\d.-]/g, '');
-                                finalValue = parseFloat(numStr) || sourceValue;
+                        }
+                    } else if (mapping.type === 'days') {
+                        // Keep days values as-is (already formatted with "ngày" in source data)
+                        finalValue = sourceValue;
+
+                        // Skip if value contains "0 ngày" or "0.0 ngày"
+                        if (typeof sourceValue === 'string') {
+                            const trimmed = sourceValue.trim();
+                            if (trimmed.startsWith('0') && trimmed.includes('ngày')) {
+                                return; // Don't map, keep original value in B file
                             }
                         }
+                    } else {
+                        // Default: parse currency if contains VND
+                        if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
+                            const numStr = sourceValue.replace(/[^\d.-]/g, '');
+                            const parsedValue = parseFloat(numStr);
 
-                        cell.value = finalValue;
+                            // Skip if parsed value is 0 or NaN
+                            if (!parsedValue || parsedValue === 0) {
+                                return; // Don't map, keep original value in B file
+                            }
+
+                            finalValue = parsedValue;
+                        }
                     }
+
+                    cell.value = finalValue;
                 });
 
                 // Save file to buffer
