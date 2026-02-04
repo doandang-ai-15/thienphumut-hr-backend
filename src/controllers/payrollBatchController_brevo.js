@@ -234,7 +234,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
 
                 // Apply mapping (same as other controllers)
                 const mappings = [
-                    { target: 'B3', source: { col: 1, row: 0 } }, // A[B1] -> B[B3]
+                    { target: 'B1', source: { col: 1, row: 0 }, type: 'header' }, // A[B1] -> B[B1] with 3-line format
                     { target: 'C5', source: { col: 0, row: rowIndex } },
                     { target: 'H5', source: { col: 1, row: rowIndex } },
                     { target: 'C6', source: { col: 2, row: rowIndex } },
@@ -326,7 +326,13 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     let finalValue = sourceValue;
 
                     // Handle different mapping types
-                    if (mapping.type === 'currency') {
+                    if (mapping.type === 'header') {
+                        // Special handling for B1 header cell (3-line merged cell)
+                        // Format: Line 1: THIEN PHU MUT CO.,LTD
+                        //         Line 2: PHIẾU LƯƠNG
+                        //         Line 3: [Value from A[B1]]
+                        finalValue = `THIEN PHU MUT CO.,LTD\nPHIẾU LƯƠNG\n${sourceValue}`;
+                    } else if (mapping.type === 'currency') {
                         // Parse currency values (remove VND and convert to number)
                         if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                             const numStr = sourceValue.replace(/[^\d.-]/g, '');
