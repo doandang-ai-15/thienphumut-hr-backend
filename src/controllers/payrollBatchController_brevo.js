@@ -234,7 +234,6 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
 
                 // Apply mapping (same as other controllers)
                 const mappings = [
-                    { target: 'M1', source: { col: 1, row: 0 } }, // A[B1] - row 0 is Excel row 1
                     { target: 'B3', source: { col: 1, row: 0 } }, // A[B1] -> B[B3]
                     { target: 'C5', source: { col: 0, row: rowIndex } },
                     { target: 'H5', source: { col: 1, row: rowIndex } },
