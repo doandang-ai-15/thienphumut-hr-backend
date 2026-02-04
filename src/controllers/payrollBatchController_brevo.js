@@ -234,7 +234,8 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
 
                 // Apply mapping (same as other controllers)
                 const mappings = [
-                    { target: 'M1', source: { col: 1, row: 1 } },
+                    { target: 'M1', source: { col: 1, row: 0 } }, // A[B1] - row 0 is Excel row 1
+                    { target: 'B3', source: { col: 1, row: 0 } }, // A[B1] -> B[B3]
                     { target: 'C5', source: { col: 0, row: rowIndex } },
                     { target: 'H5', source: { col: 1, row: rowIndex } },
                     { target: 'C6', source: { col: 2, row: rowIndex } },
@@ -253,7 +254,6 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'E25', source: { col: 15, row: rowIndex } },
                     { target: 'H26', source: { col: 16, row: rowIndex } },
                     { target: 'E28', source: { col: 17, row: rowIndex } },
-                    { target: 'E29', source: { col: 18, row: rowIndex } },
                     // New mappings - Số ngày (days format)
                     { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },
                     { target: 'D12', source: { col: 21, row: rowIndex }, type: 'days' },
@@ -293,6 +293,9 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency' }, // A[BC]
                     { target: 'H27', source: { col: 55, row: rowIndex }, type: 'currency' }, // A[BD]
                     { target: 'H28', source: { col: 56, row: rowIndex }, type: 'currency' }, // A[BE]
+                    { target: 'H29', source: { col: 57, row: rowIndex }, type: 'currency' }, // A[BF]
+                    { target: 'H30', source: { col: 58, row: rowIndex }, type: 'currency' }, // A[BG]
+                    { target: 'E30', source: { col: 18, row: rowIndex } }, // A[S] -> B[E30]
                     // New mapping - A[BB] to B[H6]
                     { target: 'H6', source: { col: 53, row: rowIndex } } // A[BB]
                 ];
@@ -347,11 +350,17 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         // Keep days values as-is (already formatted with "ngày" in source data)
                         finalValue = sourceValue;
 
-                        // Skip if value contains "0 ngày" or "0.0 ngày"
+                        // Skip if value contains "0 ngày", "0.0 ngày", etc.
                         if (typeof sourceValue === 'string') {
                             const trimmed = sourceValue.trim();
-                            if (trimmed.startsWith('0') && trimmed.includes('ngày')) {
-                                return; // Don't map, keep original value in B file
+                            // Extract number from string like "0 ngày", "0.0 ngày", "26 ngày"
+                            const numMatch = trimmed.match(/^([\d.]+)\s*ngày/);
+                            if (numMatch) {
+                                const numValue = parseFloat(numMatch[1]);
+                                // Skip if number is 0 or 0.0
+                                if (numValue === 0) {
+                                    return; // Don't map, keep original value in B file
+                                }
                             }
                         }
                     } else {
@@ -403,6 +412,9 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                             <p style="color: #333; line-height: 1.6;">Xin chào <strong>${employee.first_name} ${employee.last_name}</strong>,</p>
                             <p style="color: #333; line-height: 1.6;">Vui lòng xem bảng lương của bạn trong file đính kèm.</p>
                             <p style="color: #333; line-height: 1.6;">Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ với bộ phận nhân sự.</p>
+                            <p style="color: #d32f2f; line-height: 1.6; font-weight: 600; background-color: #ffebee; padding: 10px; border-radius: 5px;">
+                                ⚠️ Mọi thông tin trên phiếu lương chứa thông tin cá nhân và thu nhập, vui lòng người nhận giữ bí mật và không chia sẻ cho bên thứ ba.
+                            </p>
 
                             <div style="margin: 30px 0; padding: 20px; background-color: #EDFFF0; border-left: 4px solid #AEDEFC; border-radius: 5px;">
                                 <p style="margin: 0; color: #666; font-size: 14px;">
@@ -434,7 +446,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 console.log(`✅ Email sent successfully to ${employee.email} via Brevo (took ${sendDuration}ms)`);
 
                 // Log to database
-                await logSentEmail(employee.id, employee.email, 'success');
+                await logSentEmail(employee.id, employee.email, 'sent');
 
                 emailsSentThisSession++;
 
