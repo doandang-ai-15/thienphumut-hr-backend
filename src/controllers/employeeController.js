@@ -63,10 +63,17 @@ exports.getEmployees = asyncHandler(async (req, res) => {
     const countResult = await pool.query(countQuery, queryParams);
     const total = parseInt(countResult.rows[0].count);
 
-    // Add sorting and pagination
+    // Add sorting
     query += ` ORDER BY e.${sortBy} ${order}`;
-    query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-    queryParams.push(limit, (page - 1) * limit);
+
+    // Add pagination only if limit is not 'all'
+    const limitValue = limit === 'all' ? total : parseInt(limit);
+    const usesPagination = limit !== 'all';
+
+    if (usesPagination) {
+        query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+        queryParams.push(limitValue, (page - 1) * limitValue);
+    }
 
     const result = await pool.query(query, queryParams);
 
@@ -74,7 +81,7 @@ exports.getEmployees = asyncHandler(async (req, res) => {
         success: true,
         count: result.rows.length,
         total,
-        pages: Math.ceil(total / limit),
+        pages: usesPagination ? Math.ceil(total / limitValue) : 1,
         currentPage: parseInt(page),
         data: result.rows
     });
