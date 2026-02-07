@@ -290,11 +290,11 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' }, // A[AZ]
                     { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }, // A[BA]
                     { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency' }, // A[BC]
-                    { target: 'H27', source: { col: 55, row: rowIndex }, type: 'currency' }, // A[BD]
-                    { target: 'H28', source: { col: 56, row: rowIndex }, type: 'currency' }, // A[BE]
-                    { target: 'H29', source: { col: 57, row: rowIndex }, type: 'currency' }, // A[BF]
+                    { target: 'H27', source: { col: 55, row: rowIndex } }, // A[BD] - Not currency, keep original
+                    { target: 'H28', source: { col: 56, row: rowIndex } }, // A[BE] - Keep original value
+                    { target: 'H29', source: { col: 57, row: rowIndex } }, // A[BF] - Keep percentage format
                     { target: 'H30', source: { col: 58, row: rowIndex }, type: 'currency' }, // A[BG]
-                    { target: 'E30', source: { col: 18, row: rowIndex } }, // A[S] -> B[E30]
+                    { target: 'E30', source: { col: 18, row: rowIndex }, type: 'currency' }, // A[S] -> B[E30]
                     // New mapping - A[BB] to B[H6]
                     { target: 'H6', source: { col: 53, row: rowIndex }, type: 'currency' } // A[BB]
                 ];
@@ -333,7 +333,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         //         Line 3: [Value from A[B1]]
                         finalValue = `THIEN PHU MUT CO.,LTD\nPHIẾU LƯƠNG\n${sourceValue}`;
                     } else if (mapping.type === 'currency') {
-                        // Parse currency values and format to "VND X,XXX,XXX"
+                        // Parse currency values and format with comma separator (no VND prefix)
                         let numericValue = 0;
 
                         if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
@@ -351,9 +351,8 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                             return; // Don't map, keep original value in B file
                         }
 
-                        // Format as "VND X,XXX,XXX"
-                        const formattedCurrency = new Intl.NumberFormat('vi-VN').format(numericValue);
-                        finalValue = `VND ${formattedCurrency}`;
+                        // Format with comma separator only (no VND prefix, no decimal points)
+                        finalValue = new Intl.NumberFormat('vi-VN').format(numericValue);
                     } else if (mapping.type === 'days') {
                         // Format days values to "X ngày" format
                         let numericValue = 0;
