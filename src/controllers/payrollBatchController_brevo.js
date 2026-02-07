@@ -292,7 +292,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency' }, // A[BC]
                     { target: 'H27', source: { col: 55, row: rowIndex } }, // A[BD] - Not currency, keep original
                     { target: 'H28', source: { col: 56, row: rowIndex } }, // A[BE] - Keep original value
-                    { target: 'H29', source: { col: 57, row: rowIndex } }, // A[BF] - Keep percentage format
+                    { target: 'H29', source: { col: 57, row: rowIndex }, type: 'percentage' }, // A[BF] - Format as percentage
                     { target: 'H30', source: { col: 58, row: rowIndex }, type: 'currency' }, // A[BG]
                     { target: 'E30', source: { col: 18, row: rowIndex }, type: 'currency' }, // A[S] -> B[E30]
                     // New mapping - A[BB] to B[H6]
@@ -379,6 +379,30 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         // Format as "X ngày" (remove decimal if it's whole number)
                         const displayValue = Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
                         finalValue = `${displayValue} ngày`;
+                    } else if (mapping.type === 'percentage') {
+                        // Format percentage values: -0.2 → -20%
+                        let numericValue = 0;
+
+                        if (typeof sourceValue === 'number') {
+                            numericValue = sourceValue;
+                        } else if (typeof sourceValue === 'string') {
+                            // Handle string percentage like "0.2" or "-0.2"
+                            const cleaned = sourceValue.replace(/[^\d.-]/g, '');
+                            numericValue = parseFloat(cleaned);
+                        }
+
+                        // Skip if value is 0 or NaN
+                        if (isNaN(numericValue)) {
+                            return; // Don't map, keep original value in B file
+                        }
+
+                        // Convert decimal to percentage: -0.2 → -20%
+                        const percentageValue = numericValue * 100;
+                        // Format with up to 1 decimal place if needed
+                        const formatted = Number.isInteger(percentageValue)
+                            ? percentageValue
+                            : percentageValue.toFixed(1);
+                        finalValue = `${formatted}%`;
                     } else {
                         // Default: parse currency if contains VND
                         if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
