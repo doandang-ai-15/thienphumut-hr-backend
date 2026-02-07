@@ -239,20 +239,20 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H5', source: { col: 1, row: rowIndex } },
                     { target: 'C6', source: { col: 2, row: rowIndex } },
                     { target: 'C7', source: { col: 3, row: rowIndex } },
-                    { target: 'H7', source: { col: 4, row: rowIndex } },
+                    { target: 'H7', source: { col: 4, row: rowIndex }, type: 'currency' },
                     { target: 'C8', source: { col: 5, row: rowIndex } },
-                    { target: 'H8', source: { col: 6, row: rowIndex } },
-                    { target: 'D10', source: { col: 7, row: rowIndex } },
-                    { target: 'E10', source: { col: 8, row: rowIndex } },
-                    { target: 'D13', source: { col: 9, row: rowIndex } },
-                    { target: 'E13', source: { col: 10, row: rowIndex } },
-                    { target: 'H13', source: { col: 11, row: rowIndex } },
-                    { target: 'H14', source: { col: 12, row: rowIndex } },
-                    { target: 'H15', source: { col: 13, row: rowIndex } },
-                    { target: 'E23', source: { col: 14, row: rowIndex } },
-                    { target: 'E25', source: { col: 15, row: rowIndex } },
-                    { target: 'H26', source: { col: 16, row: rowIndex } },
-                    { target: 'E28', source: { col: 17, row: rowIndex } },
+                    { target: 'H8', source: { col: 6, row: rowIndex }, type: 'currency' },
+                    { target: 'D10', source: { col: 7, row: rowIndex }, type: 'days' },
+                    { target: 'E10', source: { col: 8, row: rowIndex }, type: 'currency' },
+                    { target: 'D13', source: { col: 9, row: rowIndex }, type: 'days' },
+                    { target: 'E13', source: { col: 10, row: rowIndex }, type: 'currency' },
+                    { target: 'H13', source: { col: 11, row: rowIndex }, type: 'currency' },
+                    { target: 'H14', source: { col: 12, row: rowIndex }, type: 'currency' },
+                    { target: 'H15', source: { col: 13, row: rowIndex }, type: 'currency' },
+                    { target: 'E23', source: { col: 14, row: rowIndex }, type: 'currency' },
+                    { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency' },
+                    { target: 'H26', source: { col: 16, row: rowIndex }, type: 'currency' },
+                    { target: 'E28', source: { col: 17, row: rowIndex }, type: 'currency' },
                     // New mappings - Số ngày (days format)
                     { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },
                     { target: 'D12', source: { col: 21, row: rowIndex }, type: 'days' },
@@ -296,7 +296,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H30', source: { col: 58, row: rowIndex }, type: 'currency' }, // A[BG]
                     { target: 'E30', source: { col: 18, row: rowIndex } }, // A[S] -> B[E30]
                     // New mapping - A[BB] to B[H6]
-                    { target: 'H6', source: { col: 53, row: rowIndex } } // A[BB]
+                    { target: 'H6', source: { col: 53, row: rowIndex }, type: 'currency' } // A[BB]
                 ];
 
                 mappings.forEach(mapping => {
@@ -333,41 +333,53 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         //         Line 3: [Value from A[B1]]
                         finalValue = `THIEN PHU MUT CO.,LTD\nPHIẾU LƯƠNG\n${sourceValue}`;
                     } else if (mapping.type === 'currency') {
-                        // Parse currency values (remove VND and convert to number)
+                        // Parse currency values and format to "VND X,XXX,XXX"
+                        let numericValue = 0;
+
                         if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
                             const numStr = sourceValue.replace(/[^\d.-]/g, '');
-                            const parsedValue = parseFloat(numStr);
-
-                            // Skip if parsed value is 0 or NaN
-                            if (!parsedValue || parsedValue === 0) {
-                                return; // Don't map, keep original value in B file
-                            }
-
-                            finalValue = parsedValue;
+                            numericValue = parseFloat(numStr);
                         } else if (typeof sourceValue === 'number') {
-                            // If it's already a number, check if it's 0
-                            if (sourceValue === 0) {
-                                return; // Don't map, keep original value in B file
-                            }
-                            finalValue = sourceValue;
+                            numericValue = sourceValue;
+                        } else if (typeof sourceValue === 'string' && !isNaN(parseFloat(sourceValue))) {
+                            // Handle raw number as string "7500000"
+                            numericValue = parseFloat(sourceValue);
                         }
-                    } else if (mapping.type === 'days') {
-                        // Keep days values as-is (already formatted with "ngày" in source data)
-                        finalValue = sourceValue;
 
-                        // Skip if value contains "0 ngày", "0.0 ngày", etc.
+                        // Skip if value is 0 or NaN
+                        if (!numericValue || numericValue === 0) {
+                            return; // Don't map, keep original value in B file
+                        }
+
+                        // Format as "VND X,XXX,XXX"
+                        const formattedCurrency = new Intl.NumberFormat('vi-VN').format(numericValue);
+                        finalValue = `VND ${formattedCurrency}`;
+                    } else if (mapping.type === 'days') {
+                        // Format days values to "X ngày" format
+                        let numericValue = 0;
+
                         if (typeof sourceValue === 'string') {
                             const trimmed = sourceValue.trim();
                             // Extract number from string like "0 ngày", "0.0 ngày", "26 ngày"
                             const numMatch = trimmed.match(/^([\d.]+)\s*ngày/);
                             if (numMatch) {
-                                const numValue = parseFloat(numMatch[1]);
-                                // Skip if number is 0 or 0.0
-                                if (numValue === 0) {
-                                    return; // Don't map, keep original value in B file
-                                }
+                                numericValue = parseFloat(numMatch[1]);
+                            } else if (!isNaN(parseFloat(trimmed))) {
+                                // Handle raw number as string "26"
+                                numericValue = parseFloat(trimmed);
                             }
+                        } else if (typeof sourceValue === 'number') {
+                            numericValue = sourceValue;
                         }
+
+                        // Skip if number is 0 or 0.0
+                        if (numericValue === 0) {
+                            return; // Don't map, keep original value in B file
+                        }
+
+                        // Format as "X ngày" (remove decimal if it's whole number)
+                        const displayValue = Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
+                        finalValue = `${displayValue} ngày`;
                     } else {
                         // Default: parse currency if contains VND
                         if (typeof sourceValue === 'string' && sourceValue.includes('VND')) {
