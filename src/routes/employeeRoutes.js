@@ -14,6 +14,9 @@ const {
     deletePhoto,
     getPhotoUrl
 } = require('../controllers/photoController');
+const {
+    validateEmployeeCodes
+} = require('../controllers/employeeCodeValidatorController');
 const { protect, authorize, logActivity } = require('../middleware/auth');
 
 // All routes require authentication
@@ -24,6 +27,7 @@ router.get('/', getEmployees);
 router.get('/statistics', getEmployeeStatistics);
 router.get('/top/performers', getTopPerformers);
 router.get('/photo-url', getPhotoUrl);
+router.get('/validate-codes', authorize('admin'), validateEmployeeCodes);
 router.get('/:id', getEmployee);
 
 // Admin/Manager only routes
