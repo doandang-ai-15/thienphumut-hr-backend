@@ -15,7 +15,8 @@ const {
     getPhotoUrl
 } = require('../controllers/photoController');
 const {
-    validateEmployeeCodes
+    validateEmployeeCodes,
+    updateEmployeeCodes
 } = require('../controllers/employeeCodeValidatorController');
 const { protect, authorize, logActivity } = require('../middleware/auth');
 
@@ -33,6 +34,7 @@ router.get('/:id', getEmployee);
 // Admin/Manager only routes
 router.post('/', authorize('admin', 'manager'), logActivity, createEmployee);
 router.post('/upload-photo', authorize('admin', 'manager'), uploadPhoto);
+router.post('/update-codes', authorize('admin'), logActivity, updateEmployeeCodes);
 router.put('/:id', authorize('admin', 'manager'), logActivity, updateEmployee);
 
 // Admin only routes

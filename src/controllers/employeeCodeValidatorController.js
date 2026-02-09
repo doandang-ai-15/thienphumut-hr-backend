@@ -7,27 +7,45 @@ const { pool } = require('../config/database');
  * @route GET /api/employees/validate-codes
  */
 exports.validateEmployeeCodes = async (req, res) => {
+    console.log('🚀 [STEP 1] API validateEmployeeCodes called');
+
     try {
-        console.log('📋 Starting employee code validation...');
+        console.log('📋 [STEP 2] Starting employee code validation...');
 
         // Read DS CNV.xlsx file
         const filePath = path.join(__dirname, '../../temp-peyroll-form/DS CNV.xlsx');
+        console.log(`📁 [STEP 3] File path: ${filePath}`);
+
+        console.log('📖 [STEP 4] Reading Excel file...');
         const workbook = XLSX.readFile(filePath);
+        console.log('✅ [STEP 5] Excel file read successfully');
+
         const sheetName = workbook.SheetNames[0];
+        console.log(`📄 [STEP 6] Sheet name: ${sheetName}`);
+
         const worksheet = workbook.Sheets[sheetName];
 
         // Convert to JSON (skip header row)
+        console.log('🔄 [STEP 7] Converting sheet to JSON...');
         const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        console.log(`📊 [STEP 8] Found ${data.length} rows in DS CNV file`);
 
-        console.log(`📊 Found ${data.length} rows in DS CNV file`);
+        if (data.length > 0) {
+            console.log(`📝 [STEP 9] Sample row 1:`, data[0]);
+            if (data.length > 1) {
+                console.log(`📝 [STEP 10] Sample row 2:`, data[1]);
+            }
+        }
 
         // Get all employees from database
+        console.log('💾 [STEP 11] Querying database for employees...');
         const dbResult = await pool.query(`
-            SELECT id, first_name, last_name, employee_code
+            SELECT id, first_name, last_name, employee_id
             FROM employees
-            WHERE deleted_at IS NULL
             ORDER BY id
         `);
+        console.log(`✅ [STEP 12] Database query successful`);
+
         const dbEmployees = dbResult.rows;
 
         console.log(`👥 Found ${dbEmployees.length} employees in database`);
@@ -67,7 +85,7 @@ exports.validateEmployeeCodes = async (req, res) => {
 
             if (matchedEmployee) {
                 // Found employee, check if code matches
-                const dbCode = String(matchedEmployee.employee_code || '').trim();
+                const dbCode = String(matchedEmployee.employee_id || '').trim();
 
                 if (dbCode !== fileCode) {
                     mismatches.push({
@@ -110,13 +128,14 @@ exports.validateEmployeeCodes = async (req, res) => {
                 notFoundInFile.push({
                     dbId: dbEmp.id,
                     fullName: `${dbEmp.first_name} ${dbEmp.last_name}`,
-                    dbCode: dbEmp.employee_code,
+                    dbCode: dbEmp.employee_id,
                     firstName: dbEmp.first_name,
                     lastName: dbEmp.last_name
                 });
             }
         }
 
+        console.log('📊 [STEP 13] Creating summary...');
         const summary = {
             totalInFile: data.length - 1, // Exclude header
             totalInDB: dbEmployees.length,
@@ -126,9 +145,10 @@ exports.validateEmployeeCodes = async (req, res) => {
             matchedCorrectly: (data.length - 1) - mismatches.length - notFoundInDB.length
         };
 
-        console.log('✅ Validation completed');
-        console.log(`📊 Summary: ${summary.matchedCorrectly} matched, ${summary.mismatches} mismatches, ${summary.notFoundInDB} not in DB, ${summary.notFoundInFile} not in file`);
+        console.log('✅ [STEP 14] Validation completed successfully!');
+        console.log(`📊 [STEP 15] Summary: ${summary.matchedCorrectly} matched, ${summary.mismatches} mismatches, ${summary.notFoundInDB} not in DB, ${summary.notFoundInFile} not in file`);
 
+        console.log('📤 [STEP 16] Sending response to client...');
         res.json({
             success: true,
             summary,
@@ -136,9 +156,101 @@ exports.validateEmployeeCodes = async (req, res) => {
             notFoundInDB,
             notFoundInFile
         });
+        console.log('✅ [STEP 17] Response sent successfully!');
 
     } catch (error) {
-        console.error('❌ Error validating employee codes:', error);
+        console.error('❌ [ERROR] Error validating employee codes:', error);
+        console.error('❌ [ERROR] Error stack:', error.stack);
+        console.error('❌ [ERROR] Error message:', error.message);
+
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+};
+
+/**
+ * Update all mismatched employee codes from DS CNV to database
+ * @route POST /api/employees/update-codes
+ */
+exports.updateEmployeeCodes = async (req, res) => {
+    console.log('🔄 [UPDATE STEP 1] API updateEmployeeCodes called');
+
+    try {
+        const { mismatches } = req.body;
+
+        if (!mismatches || !Array.isArray(mismatches) || mismatches.length === 0) {
+            console.log('⚠️  [UPDATE STEP 2] No mismatches provided');
+            return res.status(400).json({
+                success: false,
+                error: 'No mismatches provided'
+            });
+        }
+
+        console.log(`📊 [UPDATE STEP 3] Updating ${mismatches.length} employee codes...`);
+
+        const results = {
+            success: [],
+            failed: []
+        };
+
+        for (const mismatch of mismatches) {
+            try {
+                console.log(`🔄 [UPDATE] Updating employee ID ${mismatch.dbId}: ${mismatch.dbCode} → ${mismatch.fileCode}`);
+
+                const updateResult = await pool.query(
+                    `UPDATE employees 
+                     SET employee_id = $1 
+                     WHERE id = $2 
+                     RETURNING id, first_name, last_name, employee_id`,
+                    [mismatch.fileCode, mismatch.dbId]
+                );
+
+                if (updateResult.rowCount > 0) {
+                    results.success.push({
+                        id: mismatch.dbId,
+                        fullName: mismatch.fullName,
+                        oldCode: mismatch.dbCode,
+                        newCode: mismatch.fileCode
+                    });
+                    console.log(`✅ [UPDATE] Successfully updated employee ID ${mismatch.dbId}`);
+                } else {
+                    results.failed.push({
+                        id: mismatch.dbId,
+                        fullName: mismatch.fullName,
+                        error: 'No rows updated'
+                    });
+                    console.log(`❌ [UPDATE] Failed to update employee ID ${mismatch.dbId}: No rows affected`);
+                }
+
+            } catch (error) {
+                results.failed.push({
+                    id: mismatch.dbId,
+                    fullName: mismatch.fullName,
+                    error: error.message
+                });
+                console.error(`❌ [UPDATE] Error updating employee ID ${mismatch.dbId}:`, error.message);
+            }
+        }
+
+        console.log(`✅ [UPDATE STEP 4] Update completed: ${results.success.length} success, ${results.failed.length} failed`);
+
+        res.json({
+            success: true,
+            results: {
+                successCount: results.success.length,
+                failedCount: results.failed.length,
+                success: results.success,
+                failed: results.failed
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [UPDATE ERROR] Error updating employee codes:', error);
+        console.error('❌ [UPDATE ERROR] Error stack:', error.stack);
+
         res.status(500).json({
             success: false,
             error: error.message
