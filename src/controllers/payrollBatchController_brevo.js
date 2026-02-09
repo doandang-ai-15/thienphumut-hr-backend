@@ -251,7 +251,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H15', source: { col: 13, row: rowIndex }, type: 'currency' },
                     { target: 'E23', source: { col: 14, row: rowIndex }, type: 'currency' },
                     { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency' },
-                    { target: 'H26', source: { col: 16, row: rowIndex }, type: 'currency' },
+                    // Line removed: duplicate H26 mapping (col 16) - H26 should only map from A[BC] col 54
                     { target: 'E28', source: { col: 17, row: rowIndex }, type: 'currency' },
                     // New mappings - Số ngày (days format)
                     { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },
@@ -275,7 +275,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'E17', source: { col: 33, row: rowIndex }, type: 'currency' },
                     { target: 'E18', source: { col: 34, row: rowIndex }, type: 'currency' },
                     { target: 'E19', source: { col: 36, row: rowIndex }, type: 'currency' },
-                    { target: 'E20', source: { col: 38, row: rowIndex }, type: 'currency' },
+                    { target: 'E21', source: { col: 38, row: rowIndex }, type: 'currency' }, // A[AM] -> B[E21]
                     { target: 'E22', source: { col: 40, row: rowIndex }, type: 'currency' },
                     { target: 'H16', source: { col: 41, row: rowIndex }, type: 'currency' },
                     { target: 'H17', source: { col: 42, row: rowIndex }, type: 'currency' },
@@ -289,7 +289,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'E27', source: { col: 50, row: rowIndex }, type: 'currency' },
                     { target: 'H24', source: { col: 51, row: rowIndex }, type: 'currency' }, // A[AZ]
                     { target: 'H25', source: { col: 52, row: rowIndex }, type: 'currency' }, // A[BA]
-                    { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency' }, // A[BC]
+                    { target: 'H26', source: { col: 54, row: rowIndex }, type: 'currency_allow_zero' }, // A[BC] - Allow 0 value
                     { target: 'H27', source: { col: 55, row: rowIndex } }, // A[BD] - Not currency, keep original
                     { target: 'H28', source: { col: 56, row: rowIndex } }, // A[BE] - Keep original value
                     { target: 'H29', source: { col: 57, row: rowIndex }, type: 'percentage' }, // A[BF] - Format as percentage
@@ -332,7 +332,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         //         Line 2: PHIẾU LƯƠNG
                         //         Line 3: [Value from A[B1]]
                         finalValue = `THIEN PHU MUT CO.,LTD\nPHIẾU LƯƠNG\n${sourceValue}`;
-                    } else if (mapping.type === 'currency') {
+                    } else if (mapping.type === 'currency' || mapping.type === 'currency_allow_zero') {
                         // Parse currency values and format with comma separator (no VND prefix)
                         let numericValue = 0;
 
@@ -346,13 +346,18 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                             numericValue = parseFloat(sourceValue);
                         }
 
-                        // Skip if value is 0 or NaN
-                        if (!numericValue || numericValue === 0) {
+                        // Skip if value is 0 or NaN (unless type is currency_allow_zero)
+                        if (mapping.type === 'currency' && (!numericValue || numericValue === 0)) {
                             return; // Don't map, keep original value in B file
                         }
 
+                        // For currency_allow_zero: if source is empty/null, map 0
+                        if (mapping.type === 'currency_allow_zero' && (sourceValue === null || sourceValue === undefined || sourceValue === '')) {
+                            numericValue = 0;
+                        }
+
                         // Format with comma separator only (no VND prefix, no decimal points)
-                        finalValue = new Intl.NumberFormat('vi-VN').format(numericValue);
+                        finalValue = numericValue === 0 ? '0' : new Intl.NumberFormat('vi-VN').format(numericValue);
                     } else if (mapping.type === 'days') {
                         // Format days values to "X ngày" format
                         let numericValue = 0;
@@ -380,24 +385,32 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         const displayValue = Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
                         finalValue = `${displayValue} ngày`;
                     } else if (mapping.type === 'percentage') {
-                        // Format percentage values: -0.2 → -20%
-                        let numericValue = 0;
+                        // Format percentage values
+                        // If input already has %, keep as-is: "-30%" → "-30%"
+                        // If input is decimal, convert: -0.3 → "-30%"
+                        let percentageValue = 0;
+                        let alreadyPercentage = false;
 
-                        if (typeof sourceValue === 'number') {
-                            numericValue = sourceValue;
-                        } else if (typeof sourceValue === 'string') {
-                            // Handle string percentage like "0.2" or "-0.2"
+                        if (typeof sourceValue === 'string' && sourceValue.includes('%')) {
+                            // Already formatted as percentage: "-30%" or "100%"
+                            alreadyPercentage = true;
                             const cleaned = sourceValue.replace(/[^\d.-]/g, '');
-                            numericValue = parseFloat(cleaned);
+                            percentageValue = parseFloat(cleaned);
+                        } else if (typeof sourceValue === 'number') {
+                            // Decimal format: -0.3 → multiply by 100
+                            percentageValue = sourceValue * 100;
+                        } else if (typeof sourceValue === 'string') {
+                            // String decimal: "-0.3"
+                            const cleaned = sourceValue.replace(/[^\d.-]/g, '');
+                            const numValue = parseFloat(cleaned);
+                            percentageValue = numValue * 100;
                         }
 
-                        // Skip if value is 0 or NaN
-                        if (isNaN(numericValue)) {
+                        // Skip if value is NaN
+                        if (isNaN(percentageValue)) {
                             return; // Don't map, keep original value in B file
                         }
 
-                        // Convert decimal to percentage: -0.2 → -20%
-                        const percentageValue = numericValue * 100;
                         // Format with up to 1 decimal place if needed
                         const formatted = Number.isInteger(percentageValue)
                             ? percentageValue
