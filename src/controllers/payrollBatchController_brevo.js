@@ -250,7 +250,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H14', source: { col: 12, row: rowIndex }, type: 'currency' },
                     { target: 'H15', source: { col: 13, row: rowIndex }, type: 'currency' },
                     { target: 'E23', source: { col: 14, row: rowIndex }, type: 'currency' },
-                    { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency_allow_zero' }, // A[P] - Allow 0 value
+                    { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency' },
                     // Line removed: duplicate H26 mapping (col 16) - H26 should only map from A[BC] col 54
                     { target: 'E28', source: { col: 17, row: rowIndex }, type: 'currency' },
                     // New mappings - Số ngày (days format)
@@ -302,16 +302,14 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 mappings.forEach(mapping => {
                     const sourceValue = overallData[mapping.source.row]?.[mapping.source.col];
 
-                    // Skip if value is null, undefined, or empty string (EXCEPT for currency_allow_zero type)
-                    if (mapping.type !== 'currency_allow_zero') {
-                        if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
-                            return; // Don't map, keep original value in B file
-                        }
+                    // Skip if value is null, undefined, or empty string
+                    if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
+                        return; // Don't map, keep original value in B file
+                    }
 
-                        // Skip if value is exactly 0 (number)
-                        if (sourceValue === 0) {
-                            return; // Don't map, keep original value in B file
-                        }
+                    // Skip if value is exactly 0 (number)
+                    if (sourceValue === 0) {
+                        return; // Don't map, keep original value in B file
                     }
 
                     // Skip if value is "VND 0" or similar currency zero formats
