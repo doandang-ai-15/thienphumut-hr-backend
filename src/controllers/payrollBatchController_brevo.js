@@ -244,7 +244,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H8', source: { col: 6, row: rowIndex }, type: 'currency' },
                     { target: 'D10', source: { col: 7, row: rowIndex }, type: 'days' },
                     { target: 'E10', source: { col: 8, row: rowIndex }, type: 'currency' },
-                    { target: 'D13', source: { col: 9, row: rowIndex }, type: 'days' },
+                    { target: 'D13', source: { col: 9, row: rowIndex }, type: 'hours' }, // A[J] - Format as "X giờ"
                     { target: 'E13', source: { col: 10, row: rowIndex }, type: 'currency' },
                     { target: 'H13', source: { col: 11, row: rowIndex }, type: 'currency' },
                     { target: 'H14', source: { col: 12, row: rowIndex }, type: 'currency' },
@@ -256,8 +256,8 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     // New mappings - Số ngày (days format)
                     { target: 'D11', source: { col: 19, row: rowIndex }, type: 'days' },
                     { target: 'D12', source: { col: 21, row: rowIndex }, type: 'days' },
-                    { target: 'D14', source: { col: 26, row: rowIndex }, type: 'days' },
-                    { target: 'D15', source: { col: 28, row: rowIndex }, type: 'days' },
+                    { target: 'D14', source: { col: 26, row: rowIndex }, type: 'hours' }, // A[AA] - Format as "X giờ"
+                    { target: 'D15', source: { col: 28, row: rowIndex }, type: 'hours' }, // A[AC] - Format as "X giờ"
                     { target: 'D16', source: { col: 30, row: rowIndex }, type: 'days' },
                     { target: 'D17', source: { col: 32, row: rowIndex }, type: 'days' },
                     { target: 'D19', source: { col: 35, row: rowIndex }, type: 'days' },
@@ -384,6 +384,32 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                         // Format as "X ngày" (remove decimal if it's whole number)
                         const displayValue = Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
                         finalValue = `${displayValue} ngày`;
+                    } else if (mapping.type === 'hours') {
+                        // Format hours values to "X giờ" format
+                        let numericValue = 0;
+
+                        if (typeof sourceValue === 'string') {
+                            const trimmed = sourceValue.trim();
+                            // Extract number from string like "0 giờ", "31.5 giờ", "26 giờ"
+                            const numMatch = trimmed.match(/^([\d.]+)\s*giờ/);
+                            if (numMatch) {
+                                numericValue = parseFloat(numMatch[1]);
+                            } else if (!isNaN(parseFloat(trimmed))) {
+                                // Handle raw number as string "26"
+                                numericValue = parseFloat(trimmed);
+                            }
+                        } else if (typeof sourceValue === 'number') {
+                            numericValue = sourceValue;
+                        }
+
+                        // Skip if number is 0 or 0.0
+                        if (numericValue === 0) {
+                            return; // Don't map, keep original value in B file
+                        }
+
+                        // Format as "X giờ" (remove decimal if it's whole number)
+                        const displayValue = Number.isInteger(numericValue) ? numericValue : numericValue.toFixed(1);
+                        finalValue = `${displayValue} giờ`;
                     } else if (mapping.type === 'percentage') {
                         // Format percentage values
                         // If input already has %, keep as-is: "-30%" → "-30%"
