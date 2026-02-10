@@ -302,14 +302,16 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 mappings.forEach(mapping => {
                     const sourceValue = overallData[mapping.source.row]?.[mapping.source.col];
 
-                    // Skip if value is null, undefined, or empty string
-                    if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
-                        return; // Don't map, keep original value in B file
-                    }
+                    // Skip if value is null, undefined, or empty string (EXCEPT for currency_allow_zero type)
+                    if (mapping.type !== 'currency_allow_zero') {
+                        if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
+                            return; // Don't map, keep original value in B file
+                        }
 
-                    // Skip if value is exactly 0 (number)
-                    if (sourceValue === 0) {
-                        return; // Don't map, keep original value in B file
+                        // Skip if value is exactly 0 (number)
+                        if (sourceValue === 0) {
+                            return; // Don't map, keep original value in B file
+                        }
                     }
 
                     // Skip if value is "VND 0" or similar currency zero formats
