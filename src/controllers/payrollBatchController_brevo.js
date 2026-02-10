@@ -250,7 +250,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                     { target: 'H14', source: { col: 12, row: rowIndex }, type: 'currency' },
                     { target: 'H15', source: { col: 13, row: rowIndex }, type: 'currency' },
                     { target: 'E23', source: { col: 14, row: rowIndex }, type: 'currency' },
-                    { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency' },
+                    { target: 'E25', source: { col: 15, row: rowIndex }, type: 'currency_allow_zero' }, // A[P] - Allow 0 value
                     // Line removed: duplicate H26 mapping (col 16) - H26 should only map from A[BC] col 54
                     { target: 'E28', source: { col: 17, row: rowIndex }, type: 'currency' },
                     // New mappings - Số ngày (days format)
