@@ -4,6 +4,14 @@ const path = require('path');
 const fs = require('fs').promises;
 const brevo = require('@getbrevo/brevo');
 const { pool } = require('../config/database');
+const cloudinary = require('cloudinary').v2;
+
+// Configure Cloudinary (uses same env vars as photoController)
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // Initialize Brevo API
 let apiInstance = new brevo.TransactionalEmailsApi();
@@ -46,6 +54,118 @@ async function logSentEmail(employeeId, email, status, error = null) {
         );
     } catch (error) {
         console.error('❌ [EMAIL LOG] Error logging email:', error);
+    }
+}
+
+/**
+ * Upload a file to Cloudinary as a raw resource and save import session + details to DB
+ */
+async function saveImportSession({ filePath, fileName, monthPeriod, results, employeeCount, importedBy }) {
+    console.log('🔍 [IMPORT HISTORY] ========== saveImportSession START ==========');
+    console.log(`🔍 [IMPORT HISTORY] filePath   : ${filePath}`);
+    console.log(`🔍 [IMPORT HISTORY] fileName   : ${fileName}`);
+    console.log(`🔍 [IMPORT HISTORY] monthPeriod: ${monthPeriod}`);
+    console.log(`🔍 [IMPORT HISTORY] importedBy : ${JSON.stringify(importedBy)}`);
+
+    // Check Cloudinary config loaded from env
+    const cfgCheck = cloudinary.config();
+    console.log(`🔍 [IMPORT HISTORY] Cloudinary config → cloud_name: "${cfgCheck.cloud_name}", api_key: "${cfgCheck.api_key ? cfgCheck.api_key.toString().slice(0, 6) + '...' : 'MISSING'}"`);
+
+    // Check file exists on disk before uploading
+    let fileExists = false;
+    try {
+        await fs.access(filePath);
+        const stat = await fs.stat(filePath);
+        fileExists = true;
+        console.log(`🔍 [IMPORT HISTORY] File on disk: EXISTS (${stat.size} bytes)`);
+    } catch (accessErr) {
+        console.error(`❌ [IMPORT HISTORY] File on disk: NOT FOUND → ${accessErr.message}`);
+    }
+
+    let cloudinaryResult = null;
+
+    // Step 1: Upload to Cloudinary (raw resource for non-image files)
+    if (fileExists) {
+        console.log('🔍 [IMPORT HISTORY] Step 1: Uploading to Cloudinary...');
+        try {
+            const uploadOptions = {
+                folder: 'thienphumut-hr/payroll-imports',
+                resource_type: 'raw',
+                public_id: `payroll_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+                use_filename: false
+            };
+            console.log(`🔍 [IMPORT HISTORY] Upload options: ${JSON.stringify(uploadOptions)}`);
+
+            cloudinaryResult = await cloudinary.uploader.upload(filePath, uploadOptions);
+
+            console.log(`✅ [IMPORT HISTORY] Step 1 OK → secure_url: ${cloudinaryResult.secure_url}`);
+            console.log(`✅ [IMPORT HISTORY]             public_id : ${cloudinaryResult.public_id}`);
+            console.log(`✅ [IMPORT HISTORY]             resource_type: ${cloudinaryResult.resource_type}`);
+            console.log(`✅ [IMPORT HISTORY]             bytes: ${cloudinaryResult.bytes}`);
+        } catch (uploadErr) {
+            console.error(`❌ [IMPORT HISTORY] Step 1 FAILED → ${uploadErr.message}`);
+            console.error(`❌ [IMPORT HISTORY] Full error:`, uploadErr);
+        }
+    } else {
+        console.warn('⚠️ [IMPORT HISTORY] Step 1 SKIPPED: file not on disk');
+    }
+
+    // Step 2: Save session record to DB
+    console.log('🔍 [IMPORT HISTORY] Step 2: Saving session to DB...');
+    console.log(`🔍 [IMPORT HISTORY] file_url to save: ${cloudinaryResult?.secure_url || 'NULL'}`);
+    try {
+        const sessionResult = await pool.query(
+            `INSERT INTO payroll_import_sessions
+                (file_name, file_url, cloudinary_public_id, month_period,
+                 total_employees, total_success, total_no_gmail, total_not_found,
+                 total_failed, total_limit_reached, imported_by_id, imported_by_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             RETURNING id`,
+            [
+                fileName,
+                cloudinaryResult?.secure_url || null,
+                cloudinaryResult?.public_id || null,
+                monthPeriod,
+                employeeCount,
+                results.success.length,
+                results.noGmail.length,
+                results.notFound.length,
+                results.failed.length,
+                results.limitReached.length,
+                importedBy?.id || null,
+                importedBy?.name || null
+            ]
+        );
+
+        const sessionId = sessionResult.rows[0].id;
+        console.log(`✅ [IMPORT HISTORY] Step 2 OK → session id: ${sessionId}`);
+
+        // Step 3: Save per-employee detail rows
+        console.log('🔍 [IMPORT HISTORY] Step 3: Saving employee details...');
+        const details = [
+            ...results.success.map(e => ({ ...e, status: 'sent', error_message: null })),
+            ...results.noGmail.map(e => ({ ...e, status: 'no_gmail', error_message: e.reason || null })),
+            ...results.notFound.map(e => ({ ...e, status: 'not_found', error_message: e.reason || null })),
+            ...results.failed.map(e => ({ ...e, status: 'failed', error_message: e.error || null })),
+            ...results.limitReached.map(e => ({ ...e, status: 'limit_reached', error_message: e.reason || null }))
+        ];
+        console.log(`🔍 [IMPORT HISTORY] Total detail rows to insert: ${details.length}`);
+
+        for (const detail of details) {
+            await pool.query(
+                `INSERT INTO payroll_import_details (session_id, employee_code, employee_name, email, status, error_message)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [sessionId, detail.employeeCode || null, detail.employeeName || null,
+                 detail.email || null, detail.status, detail.error_message]
+            );
+        }
+
+        console.log(`✅ [IMPORT HISTORY] Step 3 OK → ${details.length} detail records saved`);
+        console.log('🔍 [IMPORT HISTORY] ========== saveImportSession DONE ==========');
+        return sessionId;
+    } catch (dbErr) {
+        console.error(`❌ [IMPORT HISTORY] Step 2/3 DB FAILED → ${dbErr.message}`);
+        console.error('❌ [IMPORT HISTORY] Full DB error:', dbErr);
     }
 }
 
@@ -94,6 +214,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
         console.log(`📧 [DAILY LIMIT] Remaining quota: ${remainingQuota} emails`);
 
         const overallPayrollPath = req.file.path;
+        const originalFileName = req.file.originalname || req.file.filename;
         const templatePath = path.join(__dirname, '../../temp-peyroll-form/payroll-1.xlsx');
 
         // Read Overall-payroll file
@@ -235,8 +356,7 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
                 // Apply mapping (same as other controllers)
                 const mappings = [
                     { target: 'B1', source: { col: 1, row: 0 }, type: 'header' }, // A[B1] -> B[B1] with 3-line format
-                    { target: 'C5', source: { col: 0, row: rowIndex } },
-                    { target: 'H5', source: { col: 1, row: rowIndex } },
+                    { target: 'H5', source: { col: 1, row: rowIndex } },           // A[B]
                     { target: 'C6', source: { col: 2, row: rowIndex } },
                     { target: 'C7', source: { col: 3, row: rowIndex } },
                     { target: 'H7', source: { col: 4, row: rowIndex }, type: 'currency' },
@@ -577,6 +697,19 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
             }
         }
 
+        // Save import history (upload file to Cloudinary + save session/details to DB)
+        const importedBy = req.user
+            ? { id: req.user.id, name: `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() }
+            : null;
+        await saveImportSession({
+            filePath: overallPayrollPath,   // still on disk, not deleted yet
+            fileName: originalFileName,
+            monthPeriod,
+            results,
+            employeeCount,
+            importedBy
+        });
+
         // Clean up uploaded file
         await fs.unlink(overallPayrollPath);
 
@@ -616,5 +749,67 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
             // Ignore if response already closed
         }
         res.end();
+    }
+};
+
+/**
+ * GET /payroll/import-history
+ * List all import sessions (metadata only, no file content)
+ */
+exports.getImportHistory = async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, imported_at, file_name, file_url, month_period,
+                    total_employees, total_success, total_no_gmail,
+                    total_not_found, total_failed, total_limit_reached,
+                    imported_by_id, imported_by_name
+             FROM payroll_import_sessions
+             ORDER BY imported_at DESC
+             LIMIT 100`
+        );
+        res.json({ success: true, sessions: result.rows });
+    } catch (error) {
+        console.error('❌ [IMPORT HISTORY] getImportHistory error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch import history', error: error.message });
+    }
+};
+
+/**
+ * GET /payroll/import-history/:sessionId
+ * Per-employee details for a specific session
+ */
+exports.getImportSessionDetails = async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+
+        const sessionResult = await pool.query(
+            `SELECT id, imported_at, file_name, file_url, month_period,
+                    total_employees, total_success, total_no_gmail,
+                    total_not_found, total_failed, total_limit_reached,
+                    imported_by_id, imported_by_name
+             FROM payroll_import_sessions WHERE id = $1`,
+            [sessionId]
+        );
+
+        if (sessionResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        const detailsResult = await pool.query(
+            `SELECT id, employee_code, employee_name, email, status, error_message, processed_at
+             FROM payroll_import_details
+             WHERE session_id = $1
+             ORDER BY id ASC`,
+            [sessionId]
+        );
+
+        res.json({
+            success: true,
+            session: sessionResult.rows[0],
+            details: detailsResult.rows
+        });
+    } catch (error) {
+        console.error('❌ [IMPORT HISTORY] getImportSessionDetails error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch session details', error: error.message });
     }
 };

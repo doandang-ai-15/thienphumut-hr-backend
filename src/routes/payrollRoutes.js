@@ -55,4 +55,19 @@ router.get(
     payrollBatchController.downloadPayrollFile
 );
 
+// Import history routes
+router.get(
+    '/import-history',
+    protect,
+    authorize('admin'),
+    payrollBatchControllerBrevo.getImportHistory
+);
+
+router.get(
+    '/import-history/:sessionId',
+    protect,
+    authorize('admin'),
+    payrollBatchControllerBrevo.getImportSessionDetails
+);
+
 module.exports = router;
