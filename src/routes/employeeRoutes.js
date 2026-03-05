@@ -18,6 +18,10 @@ const {
     validateEmployeeCodes,
     updateEmployeeCodes
 } = require('../controllers/employeeCodeValidatorController');
+const {
+    validateTrueEmployeeCodes,
+    updateTrueEmployeeCodes
+} = require('../controllers/trueEmployeeCodeController');
 const { protect, authorize, logActivity } = require('../middleware/auth');
 
 // All routes require authentication
@@ -29,12 +33,14 @@ router.get('/statistics', getEmployeeStatistics);
 router.get('/top/performers', getTopPerformers);
 router.get('/photo-url', getPhotoUrl);
 router.get('/validate-codes', authorize('admin'), validateEmployeeCodes);
+router.get('/validate-true-codes', authorize('admin'), validateTrueEmployeeCodes);
 router.get('/:id', getEmployee);
 
 // Admin/Manager only routes
 router.post('/', authorize('admin', 'manager'), logActivity, createEmployee);
 router.post('/upload-photo', authorize('admin', 'manager'), uploadPhoto);
 router.post('/update-codes', authorize('admin'), logActivity, updateEmployeeCodes);
+router.post('/update-true-codes', authorize('admin'), logActivity, updateTrueEmployeeCodes);
 router.put('/:id', authorize('admin', 'manager'), logActivity, updateEmployee);
 
 // Admin only routes
