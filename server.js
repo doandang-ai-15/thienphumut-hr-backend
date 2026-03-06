@@ -31,8 +31,8 @@ app.use(morgan('dev'));
 
 // Conditional file upload middleware - skip for /api/payroll routes (uses multer instead)
 app.use((req, res, next) => {
-    if (req.path.startsWith('/api/payroll')) {
-        return next(); // Skip express-fileupload for payroll routes
+    if (req.path.startsWith('/api/payroll') || req.path.startsWith('/api/timesheet')) {
+        return next(); // Skip express-fileupload for payroll/timesheet routes (uses multer instead)
     }
     fileUpload({
         limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
@@ -77,6 +77,7 @@ app.use('/api/email', require('./src/routes/emailRoutes')); // Email endpoint
 app.use('/api/activity-logs', require('./src/routes/activityLogRoutes')); // Activity logs endpoint
 app.use('/api/seed', require('./src/routes/seedRoutes')); // Seed endpoint
 app.use('/api/payroll', require('./src/routes/payrollRoutes')); // Payroll batch generation endpoint
+app.use('/api/timesheet', require('./src/routes/timesheetRoutes')); // Timesheet batch sending endpoint
 app.use('/api', require('./src/routes/testMailRoutes')); // Test mail connection endpoint
 
 // Error handler (must be last)
