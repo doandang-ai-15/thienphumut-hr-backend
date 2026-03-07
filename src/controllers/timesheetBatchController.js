@@ -83,6 +83,8 @@ exports.batchSendTimesheet = async (req, res) => {
 
         const timesheetNumber = parseInt(req.body.timesheet_number) || 1;
         const saveMonth = (req.body.save_month || '').trim();
+        const skipFrom = parseInt(req.body.skip_from) || 0;
+        const skipTo = parseInt(req.body.skip_to) || 0;
 
         if (!saveMonth) {
             sendProgress({ type: 'error', message: 'Vui lòng nhập tháng/năm' });
@@ -326,8 +328,8 @@ exports.batchSendTimesheet = async (req, res) => {
                 for (let d = 1; d <= maxMonth; d++) {
                     const templateRow = 10 + d; // Row 11 for day 1, 12 for day 2, etc.
 
-                    // Column A: date (M/D/YYYY format)
-                    ws.getCell(`A${templateRow}`).value = `${month}/${d}/${year}`;
+                    // Column A: date (dd/mm/yyyy format)
+                    ws.getCell(`A${templateRow}`).value = `${d}/${month}/${year}`;
 
                     // Column B: weekday from row 8 (index 7) of file B
                     const dayCol = 5 + 2 * (d - 1);
@@ -365,8 +367,10 @@ exports.batchSendTimesheet = async (req, res) => {
                         earlyMinutes = Math.round((0.6875 - clockOut) * 24 * 60);
                     }
 
-                    ws.getCell(`I${templateRow}`).value = lateMinutes || '';
-                    ws.getCell(`J${templateRow}`).value = earlyMinutes || '';
+                    // Column I: 'X' if late > 0, otherwise blank
+                    ws.getCell(`I${templateRow}`).value = lateMinutes > 0 ? 'X' : '';
+                    // Column J: 'X' if early > 0, otherwise blank
+                    ws.getCell(`J${templateRow}`).value = earlyMinutes > 0 ? 'X' : '';
 
                     // Column K: working hours (skip if 0)
                     if (workHours !== null && workHours !== undefined && workHours !== '' && workHours !== 0) {
@@ -378,10 +382,16 @@ exports.batchSendTimesheet = async (req, res) => {
                         ws.getCell(`L${templateRow}`).value = overtime;
                     }
 
-                    // Column M: notes - V (đúng giờ) / X (đi trễ hoặc về sớm) / trống (CN)
+                    // Column M: 'V' (Vắng) when no clock data in ALL columns C-H for this row
+                    // Skip: Sunday rows and days in skip range (holidays)
                     const isSunday = String(weekday).trim() === 'CN';
-                    if (!isSunday && (clockInStr || clockOutStr)) {
-                        ws.getCell(`M${templateRow}`).value = (lateMinutes > 0 || earlyMinutes > 0) ? 'X' : 'V';
+                    const isSkipDay = skipFrom > 0 && skipTo > 0 && d >= skipFrom && d <= skipTo;
+                    if (!isSunday && !isSkipDay) {
+                        // Check if ANY clock data exists across all 3 machines (C-H)
+                        const hasAnyClockData = clockInStr || clockOutStr;
+                        if (!hasAnyClockData) {
+                            ws.getCell(`M${templateRow}`).value = 'V';
+                        }
                     }
 
                     // Row fill: cyan (#00FFFF) for Sunday, white for other days
