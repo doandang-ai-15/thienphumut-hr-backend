@@ -83,6 +83,11 @@ app.use('/api', require('./src/routes/testMailRoutes')); // Test mail connection
 // Error handler (must be last)
 app.use(errorHandler);
 
+// Health check endpoint (lightweight, no DB query)
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Export app for Vercel serverless
 module.exports = app;
 
@@ -91,6 +96,21 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
         console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+
+        // Keep-alive: self-ping every 1 minute to prevent Railway from sleeping
+        const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || `https://thienphumut-hr-backend-production.up.railway.app/health`;
+        const KEEP_ALIVE_INTERVAL = 60 * 1000; // 1 minute
+
+        setInterval(async () => {
+            try {
+                const res = await fetch(KEEP_ALIVE_URL);
+                console.log(`🏓 Keep-alive ping: ${res.status} at ${new Date().toLocaleTimeString()}`);
+            } catch (err) {
+                console.error(`🏓 Keep-alive ping failed: ${err.message}`);
+            }
+        }, KEEP_ALIVE_INTERVAL);
+
+        console.log(`🏓 Keep-alive ping enabled: ${KEEP_ALIVE_URL} every ${KEEP_ALIVE_INTERVAL / 1000}s`);
     });
 
     // Handle unhandled promise rejections
