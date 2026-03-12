@@ -110,11 +110,13 @@ async function saveImportSession({ filePath, fileName, monthPeriod, results, emp
         console.warn('⚠️ [IMPORT HISTORY] Step 1 SKIPPED: file not on disk');
     }
 
-    // Step 2: Save session record to DB
-    console.log('🔍 [IMPORT HISTORY] Step 2: Saving session to DB...');
-    console.log(`🔍 [IMPORT HISTORY] file_url to save: ${cloudinaryResult?.secure_url || 'NULL'}`);
+    // Step 2 + 3: Save session + details in a single DB transaction
+    console.log('🔍 [IMPORT HISTORY] Step 2+3: Saving session + details in transaction...');
+    const client = await pool.connect();
     try {
-        const sessionResult = await pool.query(
+        await client.query('BEGIN');
+
+        const sessionResult = await client.query(
             `INSERT INTO payroll_import_sessions
                 (file_name, file_url, cloudinary_public_id, month_period,
                  total_employees, total_success, total_no_gmail, total_not_found,
@@ -138,10 +140,8 @@ async function saveImportSession({ filePath, fileName, monthPeriod, results, emp
         );
 
         const sessionId = sessionResult.rows[0].id;
-        console.log(`✅ [IMPORT HISTORY] Step 2 OK → session id: ${sessionId}`);
+        console.log(`✅ [IMPORT HISTORY] Session id: ${sessionId}`);
 
-        // Step 3: Save per-employee detail rows
-        console.log('🔍 [IMPORT HISTORY] Step 3: Saving employee details...');
         const details = [
             ...results.success.map(e => ({ ...e, status: 'sent', error_message: null })),
             ...results.noGmail.map(e => ({ ...e, status: 'no_gmail', error_message: e.reason || null })),
@@ -149,10 +149,9 @@ async function saveImportSession({ filePath, fileName, monthPeriod, results, emp
             ...results.failed.map(e => ({ ...e, status: 'failed', error_message: e.error || null })),
             ...results.limitReached.map(e => ({ ...e, status: 'limit_reached', error_message: e.reason || null }))
         ];
-        console.log(`🔍 [IMPORT HISTORY] Total detail rows to insert: ${details.length}`);
 
         for (const detail of details) {
-            await pool.query(
+            await client.query(
                 `INSERT INTO payroll_import_details (session_id, employee_code, employee_name, email, status, error_message)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
                 [sessionId, detail.employeeCode || null, detail.employeeName || null,
@@ -160,12 +159,15 @@ async function saveImportSession({ filePath, fileName, monthPeriod, results, emp
             );
         }
 
-        console.log(`✅ [IMPORT HISTORY] Step 3 OK → ${details.length} detail records saved`);
-        console.log('🔍 [IMPORT HISTORY] ========== saveImportSession DONE ==========');
+        await client.query('COMMIT');
+        console.log(`✅ [IMPORT HISTORY] Transaction committed: session ${sessionId} + ${details.length} details`);
         return sessionId;
     } catch (dbErr) {
-        console.error(`❌ [IMPORT HISTORY] Step 2/3 DB FAILED → ${dbErr.message}`);
-        console.error('❌ [IMPORT HISTORY] Full DB error:', dbErr);
+        await client.query('ROLLBACK');
+        console.error(`❌ [IMPORT HISTORY] Transaction rolled back: ${dbErr.message}`);
+        throw dbErr;
+    } finally {
+        client.release();
     }
 }
 
@@ -705,14 +707,22 @@ exports.generateAndSendBatchPayroll = async (req, res) => {
         const importedBy = req.user
             ? { id: req.user.id, name: `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() }
             : null;
-        await saveImportSession({
-            filePath: overallPayrollPath,   // still on disk, not deleted yet
-            fileName: originalFileName,
-            monthPeriod,
-            results,
-            employeeCount,
-            importedBy
-        });
+        try {
+            await saveImportSession({
+                filePath: overallPayrollPath,   // still on disk, not deleted yet
+                fileName: originalFileName,
+                monthPeriod,
+                results,
+                employeeCount,
+                importedBy
+            });
+        } catch (historyErr) {
+            console.error('❌ [IMPORT HISTORY] Failed to save import history:', historyErr);
+            sendProgress({
+                type: 'warning',
+                message: `Lưu ý: Email đã gửi thành công nhưng lưu lịch sử thất bại. Lỗi: ${historyErr.message}`
+            });
+        }
 
         // Clean up uploaded file
         await fs.unlink(overallPayrollPath);

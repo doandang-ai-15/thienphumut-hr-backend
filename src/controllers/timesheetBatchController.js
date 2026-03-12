@@ -511,15 +511,20 @@ exports.batchSendTimesheet = async (req, res) => {
         const importedBy = req.user
             ? { id: req.user.id, name: `${req.user.first_name || ''} ${req.user.last_name || ''}`.trim() }
             : null;
-        await saveImportSession({
-            filePath: uploadedPath,
-            fileName: req.file.originalname,
-            monthPeriod: saveMonth,
-            timesheetNumber,
-            results,
-            employeeCount,
-            importedBy
-        });
+        try {
+            await saveImportSession({
+                filePath: uploadedPath,
+                fileName: req.file.originalname,
+                monthPeriod: saveMonth,
+                timesheetNumber,
+                results,
+                employeeCount,
+                importedBy
+            });
+        } catch (historyErr) {
+            console.error(`[TIMESHEET] Failed to save import history: ${historyErr.message}`);
+            sendProgress({ type: 'warning', message: `Lưu ý: Email đã gửi thành công nhưng lưu lịch sử thất bại (${historyErr.message}). Vui lòng liên hệ IT.` });
+        }
 
         // Clean up uploaded file
         try { await fs.unlink(uploadedPath); } catch (e) { /* ignore */ }
@@ -553,6 +558,7 @@ exports.batchSendTimesheet = async (req, res) => {
 
 /**
  * Upload file to Cloudinary and save import session + details to DB
+ * Uses DB transaction to ensure all-or-nothing for session + details
  */
 async function saveImportSession({ filePath, fileName, monthPeriod, timesheetNumber, results, employeeCount, importedBy }) {
     let cloudinaryResult = null;
@@ -571,9 +577,12 @@ async function saveImportSession({ filePath, fileName, monthPeriod, timesheetNum
         console.error(`[TIMESHEET] Cloudinary upload failed: ${err.message}`);
     }
 
-    // Step 2: Save session record
+    // Step 2 + 3: Save session + details in a single transaction
+    const client = await pool.connect();
     try {
-        const sessionResult = await pool.query(
+        await client.query('BEGIN');
+
+        const sessionResult = await client.query(
             `INSERT INTO timesheet_import_sessions
                 (file_name, file_url, cloudinary_public_id, month_period, timesheet_number,
                  total_employees, total_success, total_no_gmail, total_not_found,
@@ -598,9 +607,7 @@ async function saveImportSession({ filePath, fileName, monthPeriod, timesheetNum
         );
 
         const sessionId = sessionResult.rows[0].id;
-        console.log(`[TIMESHEET] Session saved: id=${sessionId}`);
 
-        // Step 3: Save per-employee details
         const details = [
             ...results.success.map(e => ({ ...e, status: 'sent', error_message: null })),
             ...results.noGmail.map(e => ({ ...e, status: 'no_gmail', error_message: e.reason || null })),
@@ -610,7 +617,7 @@ async function saveImportSession({ filePath, fileName, monthPeriod, timesheetNum
         ];
 
         for (const detail of details) {
-            await pool.query(
+            await client.query(
                 `INSERT INTO timesheet_import_details (session_id, employee_code, employee_name, email, status, error_message)
                  VALUES ($1, $2, $3, $4, $5, $6)`,
                 [sessionId, detail.employeeCode || null, detail.employeeName || null,
@@ -618,10 +625,15 @@ async function saveImportSession({ filePath, fileName, monthPeriod, timesheetNum
             );
         }
 
-        console.log(`[TIMESHEET] ${details.length} detail records saved`);
+        await client.query('COMMIT');
+        console.log(`[TIMESHEET] Session ${sessionId} saved with ${details.length} details (transaction committed)`);
         return sessionId;
     } catch (dbErr) {
-        console.error(`[TIMESHEET] DB save failed: ${dbErr.message}`);
+        await client.query('ROLLBACK');
+        console.error(`[TIMESHEET] DB transaction failed, rolled back: ${dbErr.message}`);
+        throw dbErr; // propagate so caller knows history wasn't saved
+    } finally {
+        client.release();
     }
 }
 
