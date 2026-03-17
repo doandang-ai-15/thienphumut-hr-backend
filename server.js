@@ -98,19 +98,26 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
         console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 
         // Keep-alive: self-ping every 1 minute to prevent Railway from sleeping
-        const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || `https://thienphumut-hr-backend-production.up.railway.app/health`;
-        const KEEP_ALIVE_INTERVAL = 60 * 1000; // 1 minute
+        // Set KEEP_ALIVE=OFF in Railway Variables to disable
+        const KEEP_ALIVE_ENABLED = (process.env.KEEP_ALIVE || 'ON').toUpperCase() === 'ON';
 
-        setInterval(async () => {
-            try {
-                const res = await fetch(KEEP_ALIVE_URL);
-                console.log(`🏓 Keep-alive ping: ${res.status} at ${new Date().toLocaleTimeString()}`);
-            } catch (err) {
-                console.error(`🏓 Keep-alive ping failed: ${err.message}`);
-            }
-        }, KEEP_ALIVE_INTERVAL);
+        if (KEEP_ALIVE_ENABLED) {
+            const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || `https://thienphumut-hr-backend-production.up.railway.app/health`;
+            const KEEP_ALIVE_INTERVAL = 60 * 1000; // 1 minute
 
-        console.log(`🏓 Keep-alive ping enabled: ${KEEP_ALIVE_URL} every ${KEEP_ALIVE_INTERVAL / 1000}s`);
+            setInterval(async () => {
+                try {
+                    const res = await fetch(KEEP_ALIVE_URL);
+                    console.log(`🏓 Keep-alive ping: ${res.status} at ${new Date().toLocaleTimeString()}`);
+                } catch (err) {
+                    console.error(`🏓 Keep-alive ping failed: ${err.message}`);
+                }
+            }, KEEP_ALIVE_INTERVAL);
+
+            console.log(`🏓 Keep-alive ping enabled: ${KEEP_ALIVE_URL} every ${KEEP_ALIVE_INTERVAL / 1000}s`);
+        } else {
+            console.log(`🏓 Keep-alive ping disabled (KEEP_ALIVE=OFF)`);
+        }
     });
 
     // Handle unhandled promise rejections
