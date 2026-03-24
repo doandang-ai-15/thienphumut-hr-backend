@@ -83,8 +83,8 @@ exports.batchSendTimesheet = async (req, res) => {
 
         const timesheetNumber = parseInt(req.body.timesheet_number) || 1;
         const saveMonth = (req.body.save_month || '').trim();
-        const skipFrom = parseInt(req.body.skip_from) || 0;
-        const skipTo = parseInt(req.body.skip_to) || 0;
+        let holidayRanges = [];
+        try { holidayRanges = JSON.parse(req.body.holiday_ranges || '[]'); } catch (e) { holidayRanges = []; }
 
         if (!saveMonth) {
             sendProgress({ type: 'error', message: 'Vui lòng nhập tháng/năm' });
@@ -385,7 +385,7 @@ exports.batchSendTimesheet = async (req, res) => {
                     // Column M: 'V' (Vắng) when no clock data in ALL columns C-H for this row
                     // Skip: Sunday rows and days in skip range (holidays)
                     const isSunday = String(weekday).trim() === 'CN';
-                    const isSkipDay = skipFrom > 0 && skipTo > 0 && d >= skipFrom && d <= skipTo;
+                    const isSkipDay = holidayRanges.some(r => r.from > 0 && r.to > 0 && d >= r.from && d <= r.to);
                     if (!isSunday && !isSkipDay) {
                         // Check if ANY clock data exists across all 3 machines (C-H)
                         const hasAnyClockData = clockInStr || clockOutStr;
